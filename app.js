@@ -1,0 +1,540 @@
+// ── STORAGE ──────────────────────────────────────────────────────
+const LS = {
+  g:  k => { try { return JSON.parse(localStorage.getItem(k) || 'null') } catch { return null } },
+  gA: k => { try { return JSON.parse(localStorage.getItem(k) || '[]')   } catch { return [] }  },
+  s:  (k,v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
+};
+
+// ── STATE ─────────────────────────────────────────────────────────
+let overview    = LS.g('fp_overview')    || { income:0, saveTarget:0 };
+let budget      = LS.gA('fp_budget');
+let investments = LS.gA('fp_investments');
+let invMonthly  = LS.g('fp_inv_monthly') || 0;
+let months      = LS.gA('fp_months');
+let principles  = LS.gA('fp_principles');
+let banks       = LS.gA('mm_banks');
+let mmIncome    = LS.g('mm_income') || { salary:0, autosave:0, autoinvest:0 };
+
+let editBankIdx = null, editPrincipleId = null;
+let bankFilter = 'all';
+let selColor = '#10b981', selType = 'savings';
+
+// ── CONSTANTS ─────────────────────────────────────────────────────
+const INV_COLORS = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ec4899','#06b6d4','#84cc16','#f97316','#6366f1'];
+const SPEND_CATS = [
+  { key:'shopping',      label:'Shopping & Clothes',    icon:'[shop]' },
+  { key:'transport',     label:'Transport',              icon:'[car]' },
+  { key:'health',        label:'Health & Wellness',      icon:'[health]' },
+  { key:'entertainment', label:'Entertainment',          icon:'[fun]' },
+  { key:'travel',        label:'Travel',                 icon:'[plane]' },
+  { key:'rent',          label:'Rent & Bills',           icon:'[home]' },
+  { key:'beauty',        label:'Personal Care & Beauty', icon:'[beauty]' },
+  { key:'food',          label:'Eating Out & Cafes',     icon:'[cafe]' },
+  { key:'subs',          label:'Subscriptions',          icon:'[phone]' }
+];
+const TYPE_LABELS = { savings:'Savings', checking:'Checking', investment:'Investment', fixed:'Fixed Deposit' };
+const TYPE_ICONS  = { savings:'[savings]', checking:'[checking]', investment:'[invest]', fixed:'[fixed]' };
+
+// ── HELPERS ───────────────────────────────────────────────────────
+const BAHT = '\u0E3F';
+const fmt = n => BAHT + Math.round(n||0).toLocaleString();
+const pct = (a,b) => b > 0 ? Math.round(a/b*100) : 0;
+const v   = id => document.getElementById(id)?.value.trim() || '';
+const sv  = (id,val) => { const e = document.getElementById(id); if(e) e.value = val||''; };
+const el  = id => document.getElementById(id);
+const fD  = s => { if(!s) return ''; return new Date(s+'T12:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
+const fM  = s => { if(!s) return ''; const [y,m] = s.split('-'); return new Date(y,m-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'}); };
+
+// ── DERIVED FROM MONEY MAP ────────────────────────────────────────
+function totalSavingsFromBanks() {
+  return banks.filter(b => ['savings','fixed','checking'].includes(b.type)).reduce((s,b) => s+b.amount, 0);
+}
+function totalInvestedFromBanks() {
+  return banks.filter(b => b.type==='investment').reduce((s,b) => s+b.amount, 0);
+}
+function totalWealthFromBanks() {
+  return banks.reduce((s,b) => s+b.amount, 0);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  el('hdate').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+
+  document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    el('p-' + b.dataset.t)?.classList.add('active');
+  }));
+
+  const ov = el('ov');
+  ov.addEventListener('click', () => {
+    document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+    ov.classList.remove('open');
+  });
+  document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => closeM(b.dataset.close)));
+
+  el('color-row')?.addEventListener('click', e => {
+    const sw = e.target.closest('.color-swatch'); if (!sw) return;
+    document.querySelectorAll('.color-swatch').forEach(x => x.classList.remove('sel'));
+    sw.classList.add('sel'); selColor = sw.dataset.color;
+  });
+
+  el('type-pills')?.addEventListener('click', e => {
+    const p = e.target.closest('.type-pill'); if (!p) return;
+    document.querySelectorAll('.type-pill').forEach(x => x.classList.remove('sel'));
+    p.classList.add('sel'); selType = p.dataset.type;
+  });
+
+  el('bank-filter-bar')?.addEventListener('click', e => {
+    const fc = e.target.closest('.fc'); if (!fc) return;
+    document.querySelectorAll('#bank-filter-bar .fc').forEach(x => x.classList.remove('active'));
+    fc.classList.add('active'); bankFilter = fc.dataset.f; renderBanks();
+  });
+
+  SPEND_CATS.forEach(c => {
+    el('ms-'+c.key)?.addEventListener('input', autoSumSpending);
+  });
+
+  // Overview
+  el('btn-edit-overview')?.addEventListener('click', () => {
+    sv('ov-income', overview.income||mmIncome.salary);
+    sv('ov-save-target', overview.saveTarget);
+    openM('m-overview');
+  });
+  el('sv-overview')?.addEventListener('click', () => {
+    overview = { income:+v('ov-income'), saveTarget:+v('ov-save-target') };
+    LS.s('fp_overview', overview); renderOverview(); closeM('m-overview');
+  });
+
+  // Budget
+  el('btn-set-income')?.addEventListener('click', () => { sv('inc-val', overview.income||mmIncome.salary); openM('m-income'); });
+  el('sv-income')?.addEventListener('click', () => {
+    overview.income = +v('inc-val');
+    LS.s('fp_overview', overview); renderOverview(); renderBudget(); closeM('m-income');
+  });
+  el('btn-add-budget')?.addEventListener('click', () => openM('m-budget'));
+  el('sv-budget')?.addEventListener('click', () => {
+    const name = v('bc-name'); if (!name) return;
+    budget.push({ id:Date.now(), name, emoji:el('bc-emoji').value.trim()||'*', amount:+v('bc-amount')||0, color:el('bc-color').value });
+    LS.s('fp_budget', budget); renderBudget(); renderOverview();
+    ['bc-name','bc-amount'].forEach(id => sv(id,'')); closeM('m-budget');
+  });
+  window.dBudget = i => { budget.splice(i,1); LS.s('fp_budget',budget); renderBudget(); renderOverview(); };
+
+  // Investments
+  el('btn-set-inv-budget')?.addEventListener('click', () => { sv('inv-monthly', invMonthly); openM('m-inv-budget'); });
+  el('sv-inv-budget')?.addEventListener('click', () => {
+    invMonthly = +v('inv-monthly'); LS.s('fp_inv_monthly', invMonthly); renderInvestments(); closeM('m-inv-budget');
+  });
+  el('btn-add-inv')?.addEventListener('click', () => openM('m-inv'));
+  el('sv-inv')?.addEventListener('click', () => {
+    const name = v('inv-name'); if (!name) return;
+    investments.push({ id:Date.now(), name, ticker:v('inv-ticker'), pct:+v('inv-pct')||0, note:v('inv-note'), color:INV_COLORS[investments.length%INV_COLORS.length] });
+    LS.s('fp_investments', investments); renderInvestments();
+    ['inv-name','inv-ticker','inv-pct','inv-note'].forEach(id => sv(id,'')); closeM('m-inv');
+  });
+  window.dInv = i => { investments.splice(i,1); LS.s('fp_investments',investments); renderInvestments(); };
+
+  // Monthly Spending
+  el('btn-add-month')?.addEventListener('click', () => {
+    const now = new Date();
+    sv('ms-month', `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
+    SPEND_CATS.forEach(c => sv('ms-'+c.key,''));
+    sv('ms-total','');
+    openM('m-month');
+  });
+  el('sv-month')?.addEventListener('click', () => {
+    const month = v('ms-month'); if (!month) return;
+    const entry = { month };
+    SPEND_CATS.forEach(c => { entry[c.key] = +(el('ms-'+c.key)?.value||0); });
+    entry.total = SPEND_CATS.reduce((s,c) => s+entry[c.key], 0);
+    const existing = months.findIndex(m => m.month === month);
+    if (existing >= 0) months[existing] = entry; else months.push(entry);
+    LS.s('fp_months', months); renderSpending(); renderOverview();
+    SPEND_CATS.forEach(c => sv('ms-'+c.key,'')); sv('ms-total',''); closeM('m-month');
+  });
+  window.dMonth = month => { months = months.filter(m => m.month !== month); LS.s('fp_months',months); renderSpending(); renderOverview(); };
+
+  // Money Map
+  el('btn-edit-mm-income')?.addEventListener('click', () => {
+    sv('ic-salary', mmIncome.salary); sv('ic-autosave', mmIncome.autosave); sv('ic-autoinvest', mmIncome.autoinvest); openM('m-mm-income');
+  });
+  el('sv-mm-income')?.addEventListener('click', () => {
+    mmIncome = { salary:+v('ic-salary')||0, autosave:+v('ic-autosave')||0, autoinvest:+v('ic-autoinvest')||0 };
+    LS.s('mm_income', mmIncome); renderMoneyMap(); renderOverview(); closeM('m-mm-income');
+  });
+  el('btn-add-bank')?.addEventListener('click', () => {
+    selColor = '#10b981'; selType = 'savings';
+    document.querySelectorAll('.color-swatch').forEach(x => x.classList.remove('sel'));
+    document.querySelector('.color-swatch[data-color="#10b981"]')?.classList.add('sel');
+    document.querySelectorAll('.type-pill').forEach(x => x.classList.remove('sel'));
+    document.querySelector('.type-pill[data-type="savings"]')?.classList.add('sel');
+    openM('m-bank');
+  });
+  el('sv-bank')?.addEventListener('click', () => {
+    const name = v('bk-name'); if (!name) return;
+    banks.push({ id:Date.now(), name, nick:v('bk-nick'), type:selType, amount:+v('bk-amount')||0, purpose:v('bk-purpose'), color:selColor, notes:v('bk-notes') });
+    LS.s('mm_banks', banks); renderMoneyMap(); renderOverview();
+    ['bk-name','bk-nick','bk-amount','bk-purpose','bk-notes'].forEach(id => sv(id,'')); closeM('m-bank');
+  });
+  el('sv-edit-bank')?.addEventListener('click', () => {
+    if (editBankIdx === null) return;
+    banks[editBankIdx].amount = +v('eb-amount')||0;
+    if (v('eb-notes')) banks[editBankIdx].notes = v('eb-notes');
+    LS.s('mm_banks', banks); renderMoneyMap(); renderOverview(); closeM('m-edit-bank'); editBankIdx = null;
+  });
+  window.editBank = i => { editBankIdx = i; sv('eb-amount', banks[i].amount); sv('eb-notes', banks[i].notes||''); openM('m-edit-bank'); };
+  window.dBank = i => { banks.splice(i,1); LS.s('mm_banks',banks); renderMoneyMap(); renderOverview(); };
+
+  // Principles
+  el('btn-add-principle')?.addEventListener('click', () => {
+    editPrincipleId = null;
+    el('pr-modal-title').textContent = 'Add Principle';
+    ['pr-title','pr-body','pr-tag'].forEach(id => sv(id,''));
+    openM('m-principle');
+  });
+  el('sv-principle')?.addEventListener('click', () => {
+    const title = v('pr-title'); if (!title) return;
+    if (editPrincipleId) {
+      const p = principles.find(x => x.id === editPrincipleId);
+      if (p) { p.title = title; p.body = v('pr-body'); p.tag = v('pr-tag'); }
+    } else {
+      principles.push({ id:Date.now(), title, body:v('pr-body'), tag:v('pr-tag') });
+    }
+    LS.s('fp_principles', principles); renderPrinciples();
+    ['pr-title','pr-body','pr-tag'].forEach(id => sv(id,'')); editPrincipleId = null; closeM('m-principle');
+  });
+  window.editPrinciple = id => {
+    editPrincipleId = id;
+    const p = principles.find(x => x.id === id); if (!p) return;
+    el('pr-modal-title').textContent = 'Edit Principle';
+    sv('pr-title', p.title); sv('pr-body', p.body||''); sv('pr-tag', p.tag||'');
+    openM('m-principle');
+  };
+  window.dPrinciple = id => { principles = principles.filter(x => x.id !== id); LS.s('fp_principles',principles); renderPrinciples(); };
+
+  renderOverview(); renderBudget(); renderInvestments();
+  renderSpending(); renderMoneyMap(); renderPrinciples();
+});
+
+// ── MODALS ────────────────────────────────────────────────────────
+function openM(id) { el('ov').classList.add('open'); el(id)?.classList.add('open'); }
+function closeM(id) { el('ov').classList.remove('open'); el(id)?.classList.remove('open'); }
+
+// ── AUTO-SUM ──────────────────────────────────────────────────────
+function autoSumSpending() {
+  const total = SPEND_CATS.reduce((s,c) => s + (+(el('ms-'+c.key)?.value||0)), 0);
+  const totalEl = el('ms-total');
+  if (totalEl) totalEl.value = total || '';
+}
+
+// ── OVERVIEW ──────────────────────────────────────────────────────
+function renderOverview() {
+  const income = overview.income || mmIncome.salary;
+  const saveTarget = overview.saveTarget;
+  const savings = totalSavingsFromBanks();
+  const invested = totalInvestedFromBanks();
+  const total = totalWealthFromBanks();
+  const rate = income > 0 ? pct(saveTarget, income) : 0;
+  const totalBudgeted = budget.reduce((s,b) => s+b.amount, 0);
+  const remaining = income - totalBudgeted - saveTarget;
+
+  el('kpi-overview').innerHTML = `
+    <div class="kpi"><div class="kpi-lbl">Monthly Income</div><div class="kpi-val g-text">${fmt(income)}</div><div class="kpi-sub">from Money Map</div></div>
+    <div class="kpi"><div class="kpi-lbl">Total Savings</div><div class="kpi-val">${fmt(savings)}</div><div class="kpi-sub">from accounts</div></div>
+    <div class="kpi"><div class="kpi-lbl">Total Invested</div><div class="kpi-val" style="color:var(--blue)">${fmt(invested)}</div><div class="kpi-sub">from accounts</div></div>
+    <div class="kpi"><div class="kpi-lbl">Net Worth</div><div class="kpi-val g-text">${fmt(total)}</div><div class="kpi-sub">all accounts combined</div></div>
+  `;
+  el('savings-rate-card').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div>
+        <div style="font-family:var(--font-d);font-size:15px;font-weight:700">Savings Rate</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:1px">Target ${fmt(saveTarget)} / month</div>
+      </div>
+      <div style="font-family:var(--font-d);font-size:30px;font-weight:800" class="g-text">${rate}%</div>
+    </div>
+    <div class="pbar-bg"><div class="pbar" style="width:${Math.min(rate,100)}%"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3);margin-top:8px">
+      <span>Budgeted: ${fmt(totalBudgeted)}</span>
+      <span>Saved: ${fmt(saveTarget)}</span>
+      <span style="color:${remaining>=0?'var(--green)':'var(--red)'}">${remaining>=0?'Unallocated':'Over'}: ${fmt(Math.abs(remaining))}</span>
+    </div>
+    <div style="font-size:11px;color:var(--t3);margin-top:10px;font-style:italic">
+      Savings &amp; invested totals auto-update from your Money Map accounts
+    </div>
+  `;
+  const sorted = [...months].sort((a,b) => b.month.localeCompare(a.month));
+  const latest = sorted[0] || null;
+  const prev = sorted[1] || null;
+  const ovMonth = el('overview-month');
+  if (!latest) { ovMonth.innerHTML = '<div class="empty">No monthly data yet - log your first month in Monthly Spending</div>'; return; }
+  const topCats = SPEND_CATS.filter(c => latest[c.key]>0).sort((a,b) => latest[b.key]-latest[a.key]).slice(0,4);
+  ovMonth.innerHTML = `<div class="glass" style="padding:1.1rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-family:var(--font-d);font-size:14px;font-weight:700">${fM(latest.month)}</span>
+      <span style="font-family:var(--font-d);font-size:16px;font-weight:800" class="g-text">${fmt(latest.total)}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px">
+      ${topCats.map(c => {
+        const diff = prev ? latest[c.key] - (prev[c.key]||0) : null;
+        return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+          <span style="font-size:14px">${c.icon}</span>
+          <span style="font-size:12px;color:var(--t2);flex:1">${c.label}</span>
+          <div style="text-align:right">
+            <div style="font-family:var(--font-d);font-size:12px;font-weight:700">${fmt(latest[c.key])}</div>
+            ${diff!==null&&diff!==0?`<div style="font-size:10px;color:${diff>0?'var(--red)':'var(--green)'};font-weight:600">${diff>0?'^ up':'v down'} ${fmt(Math.abs(diff))}</div>`:''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+// ── BUDGET ────────────────────────────────────────────────────────
+function renderBudget() {
+  const inc = overview.income || mmIncome.salary;
+  const total = budget.reduce((s,b) => s+b.amount, 0);
+  const remaining = inc - total;
+  el('budget-income-bar').innerHTML = inc > 0 ? `
+    <div class="glass" style="padding:1.1rem;margin-bottom:1.2rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-family:var(--font-d);font-size:14px;font-weight:700">Monthly: ${fmt(inc)}</span>
+        <span style="font-size:12px;font-weight:600;color:${remaining>=0?'var(--green)':'var(--red)'}">${remaining>=0?'Unallocated':'Over'}: ${fmt(Math.abs(remaining))}</span>
+      </div>
+      <div style="display:flex;height:10px;border-radius:20px;overflow:hidden;gap:1px">
+        ${budget.map(b=>`<div style="height:10px;background:${b.color};width:${pct(b.amount,inc)}%;min-width:${b.amount>0?2:0}px;transition:width .5s" title="${b.name}: ${fmt(b.amount)}"></div>`).join('')}
+        <div style="flex:1;background:#f0fdf4;min-width:0"></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+        ${budget.map(b=>`<div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--t2)"><div style="width:8px;height:8px;border-radius:50%;background:${b.color}"></div>${b.name}: ${fmt(b.amount)} (${pct(b.amount,inc)}%)</div>`).join('')}
+      </div>
+    </div>` : '<div class="empty" style="margin-bottom:1.2rem">Set your monthly income first</div>';
+  const grid = el('budget-grid');
+  if (!budget.length) { grid.innerHTML = '<div class="empty" style="grid-column:1/-1">No budget categories yet</div>'; return; }
+  grid.innerHTML = budget.map((b,i) => `
+    <div class="glass budget-cat">
+      <div class="bc-top">
+        <div class="bc-name"><div class="bc-dot" style="background:${b.color}"></div>${b.emoji} ${b.name}</div>
+        <div style="text-align:right">
+          <div style="font-family:var(--font-d);font-size:14px;font-weight:700;color:${b.color}">${fmt(b.amount)}</div>
+          <div style="font-size:10px;color:var(--t3)">${inc>0?pct(b.amount,inc):0}% of income</div>
+        </div>
+      </div>
+      <div class="pbar-bg"><div class="pbar" style="width:${inc>0?pct(b.amount,inc):0}%;background:${b.color}"></div></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn btn-d" onclick="dBudget(${i})">Remove</button></div>
+    </div>`).join('');
+}
+
+// ── INVESTMENTS ───────────────────────────────────────────────────
+function renderInvestments() {
+  const totalPct = investments.reduce((s,i) => s+i.pct, 0);
+  el('inv-summary').innerHTML = `
+    <div class="kpi-grid" style="margin-bottom:1.2rem">
+      <div class="kpi"><div class="kpi-lbl">Monthly Amount</div><div class="kpi-val g-text">${fmt(invMonthly)}</div></div>
+      <div class="kpi"><div class="kpi-lbl">Funds / ETFs</div><div class="kpi-val">${investments.length}</div></div>
+      <div class="kpi"><div class="kpi-lbl">Allocated</div><div class="kpi-val" style="color:${totalPct>100?'var(--red)':totalPct===100?'var(--green)':'var(--amber)'}">${totalPct}%</div><div class="kpi-sub">${totalPct===100?'OK - Perfect':'Target: 100%'}</div></div>
+    </div>`;
+  const barWrap = el('alloc-bar-wrap');
+  if (!investments.length) { barWrap.innerHTML = '<div class="empty">Add ETFs to see allocation</div>'; el('inv-grid').innerHTML = ''; return; }
+  barWrap.innerHTML = `
+    <div class="alloc-bar">${investments.map(inv=>`<div class="alloc-seg" style="width:${inv.pct}%;background:${inv.color}" title="${inv.name}: ${inv.pct}%"></div>`).join('')}${totalPct<100?`<div class="alloc-seg" style="width:${100-totalPct}%;background:#f0fdf4"></div>`:''}</div>
+    <div class="alloc-legend" style="margin-top:.5rem">${investments.map(inv=>`<div class="alloc-leg"><div class="alloc-dot" style="background:${inv.color}"></div>${inv.ticker||inv.name}: ${inv.pct}%</div>`).join('')}</div>`;
+  el('inv-grid').innerHTML = investments.map((inv,i) => {
+    const monthly = invMonthly * inv.pct / 100;
+    return `<div class="glass inv-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div><div style="font-size:13px;font-weight:700;color:var(--t)">${inv.name}</div><div style="font-size:11px;color:var(--t3)">${inv.ticker||'-'}</div></div>
+        <div style="font-family:var(--font-d);font-size:20px;font-weight:800;color:${inv.color}">${inv.pct}%</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1;background:#f0fdf4;border-radius:20px;height:5px;overflow:hidden"><div style="height:5px;border-radius:20px;background:${inv.color};width:${Math.min(inv.pct,100)}%"></div></div>
+        <span style="font-size:11px;color:var(--t3);white-space:nowrap">${fmt(monthly)}/mo</span>
+      </div>
+      ${inv.note?`<div style="font-size:11px;color:var(--t2);margin-top:8px;line-height:1.5">${inv.note}</div>`:''}
+      <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn btn-d" onclick="dInv(${i})">Remove</button></div>
+    </div>`;
+  }).join('');
+}
+
+// ── MONTHLY SPENDING ──────────────────────────────────────────────
+function renderSpending() {
+  const sorted = [...months].sort((a,b) => b.month.localeCompare(a.month));
+  const last6 = sorted.slice(0,6).reverse();
+  const maxTotal = Math.max(...last6.map(m => m.total), 1);
+  const trendEl = el('spending-trend');
+  if (last6.length > 1) {
+    trendEl.innerHTML = `<div class="glass" style="padding:1.1rem;margin-bottom:1.2rem">
+      <div style="font-family:var(--font-d);font-size:13px;font-weight:700;margin-bottom:12px">6-Month Trend</div>
+      <div style="display:flex;align-items:flex-end;gap:6px;height:80px">
+        ${last6.map(m=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+          <div style="width:100%;background:linear-gradient(180deg,#10b981,#3b82f6);border-radius:6px 6px 0 0;height:${Math.round(m.total/maxTotal*64)}px;min-height:4px;transition:height .4s" title="${fmt(m.total)}"></div>
+          <div style="font-size:9px;color:var(--t3);text-align:center">${fM(m.month).split(' ')[0].slice(0,3)}</div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  } else { trendEl.innerHTML = ''; }
+  const wrap = el('month-list');
+  if (!sorted.length) { wrap.innerHTML = '<div class="empty">No months logged yet - click "+ Log Month"</div>'; return; }
+  wrap.innerHTML = sorted.map((m, idx) => {
+    const prev = sorted[idx+1] || null;
+    const cats = SPEND_CATS.filter(c => m[c.key] > 0);
+    const totalDiff = prev ? m.total - prev.total : null;
+    return `<div class="glass month-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span style="font-family:var(--font-d);font-size:15px;font-weight:700">${fM(m.month)}</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="text-align:right">
+            <div style="font-family:var(--font-d);font-size:15px;font-weight:800" class="g-text">${fmt(m.total)}</div>
+            ${totalDiff!==null?`<div style="font-size:10px;font-weight:600;color:${totalDiff>0?'var(--red)':'var(--green)'}">${totalDiff>0?'up':'down'} ${fmt(Math.abs(totalDiff))} vs prev</div>`:''}
+          </div>
+          <button class="btn btn-d" onclick="dMonth('${m.month}')">Delete</button>
+        </div>
+      </div>
+      <div class="month-cats">
+        ${cats.map(c => {
+          const diff = prev ? m[c.key] - (prev[c.key]||0) : null;
+          return `<div class="cat-row">
+            <span style="font-size:15px">${c.icon}</span>
+            <span style="font-size:12px;color:var(--t2);flex:1">${c.label}</span>
+            <div style="text-align:right">
+              <div style="font-family:var(--font-d);font-size:12px;font-weight:700">${fmt(m[c.key])}</div>
+              ${diff!==null&&diff!==0?`<div style="font-size:10px;font-weight:600;color:${diff>0?'var(--red)':'var(--green)'}">${diff>0?'+':'-'} ${fmt(Math.abs(diff))}</div>`:''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── MONEY MAP ─────────────────────────────────────────────────────
+function renderMoneyMap() {
+  renderMMKPIs(); renderIncomeFlow(); renderBanks(); renderPie(); renderAllocSummary();
+}
+function renderMMKPIs() {
+  const savings = totalSavingsFromBanks();
+  const invested = totalInvestedFromBanks();
+  const total = totalWealthFromBanks();
+  const spending = Math.max(mmIncome.salary - mmIncome.autosave - mmIncome.autoinvest, 0);
+  el('mm-kpi-grid').innerHTML = `
+    <div class="kpi"><div class="kpi-lbl">Total Wealth</div><div class="kpi-val g-text">${fmt(total)}</div><div class="kpi-sub">all accounts</div></div>
+    <div class="kpi"><div class="kpi-lbl">In Banks / Savings</div><div class="kpi-val">${fmt(savings)}</div><div class="kpi-sub">${pct(savings,total)}% of total</div></div>
+    <div class="kpi"><div class="kpi-lbl">Invested</div><div class="kpi-val" style="color:var(--blue)">${fmt(invested)}</div><div class="kpi-sub">${pct(invested,total)}% of total</div></div>
+    <div class="kpi"><div class="kpi-lbl">Monthly Salary</div><div class="kpi-val" style="color:var(--green)">${fmt(mmIncome.salary)}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Spending Budget</div><div class="kpi-val" style="color:var(--amber)">${fmt(spending)}</div><div class="kpi-sub">after savings &amp; invest</div></div>
+  `;
+}
+function renderIncomeFlow() {
+  const { salary, autosave, autoinvest } = mmIncome;
+  const spending = Math.max(salary - autosave - autoinvest, 0);
+  const wrap = el('income-flow');
+  if (!salary) { wrap.innerHTML = '<div class="empty">Click "Edit Income" to set up your monthly salary flow</div>'; return; }
+  const rows = [
+    { icon:'[save]', label:'Savings - auto-transfer on payday', amt:autosave, color:'#10b981' },
+    { icon:'[inv]',  label:'Investments - auto-invest on payday', amt:autoinvest, color:'#3b82f6' },
+    { icon:'[spend]',label:'Monthly spending budget', amt:spending, color:'#f59e0b' }
+  ];
+  wrap.innerHTML = `<div style="font-family:var(--font-d);font-size:13px;font-weight:700;margin-bottom:14px">Every month, the second your salary lands</div>
+    ${rows.map(r=>`<div class="flow-row">
+      <div class="flow-icon" style="background:${r.color}18">${r.icon}</div>
+      <div style="flex:1"><div style="font-size:12px;font-weight:500;color:var(--t2)">${r.label}</div><div class="flow-bar"><div class="flow-bar-fill" style="background:${r.color};width:${pct(r.amt,salary)}%"></div></div></div>
+      <div style="text-align:right;flex-shrink:0"><div style="font-family:var(--font-d);font-size:14px;font-weight:700;color:${r.color}">${fmt(r.amt)}</div><div style="font-size:10px;color:var(--t3)">${pct(r.amt,salary)}%</div></div>
+    </div>`).join('')}
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f0fdf4;display:flex;justify-content:space-between;font-size:11px;color:var(--t3)">
+      <span>Total: ${fmt(salary)}</span>
+      <span style="color:${salary-autosave-autoinvest>=0?'var(--green)':'var(--red)'}">${salary-autosave-autoinvest>=0?'Balanced':'Over-allocated'}</span>
+    </div>`;
+}
+function renderBanks() {
+  const total = totalWealthFromBanks();
+  const filtered = bankFilter==='all' ? banks : banks.filter(b => b.type===bankFilter);
+  const wrap = el('bank-list');
+  if (!filtered.length) { wrap.innerHTML = '<div class="empty">No accounts yet - click "+ Add Account"</div>'; return; }
+  wrap.innerHTML = filtered.map(b => {
+    const ri = banks.indexOf(b);
+    const p = pct(b.amount, total);
+    const init = b.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    return `<div class="glass bank-card">
+      <div class="bank-init" style="background:${b.color}">${init}</div>
+      <div class="bank-body">
+        <div class="bank-name">${b.nick||b.name}</div>
+        <div class="bank-sub">${b.name} - ${TYPE_LABELS[b.type]}</div>
+        ${b.purpose?`<div style="font-size:11px;color:var(--t2);margin-top:2px">Purpose: ${b.purpose}</div>`:''}
+        ${b.notes?`<div style="font-size:11px;color:var(--t3);margin-top:1px">Note: ${b.notes}</div>`:''}
+        <div class="bank-bar"><div class="bank-bar-fill" style="background:${b.color};width:${p}%"></div></div>
+      </div>
+      <div class="bank-right">
+        <div class="bank-amt">${fmt(b.amount)}</div>
+        <div class="bank-pct-badge" style="background:${b.color}">${p}%</div>
+        <div style="display:flex;gap:4px;margin-top:6px;justify-content:flex-end">
+          <button class="btn btn-g btn-sm" onclick="editBank(${ri})">Edit</button>
+          <button class="btn btn-d" onclick="dBank(${ri})">x</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function renderPie() {
+  const total = totalWealthFromBanks();
+  el('pie-center-val').textContent = fmt(total);
+  const canvas = el('pie-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W=200, H=200, cx=W/2, cy=H/2, R=88, RI=56;
+  ctx.clearRect(0,0,W,H);
+  const segments = banks.filter(b => b.amount > 0).map(b => ({ label:b.nick||b.name, amount:b.amount, color:b.color }));
+  if (!segments.length || total===0) {
+    ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fillStyle='#f0fdf4'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx,cy,RI,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.95)'; ctx.fill();
+    el('pie-legend').innerHTML = '<div style="font-size:12px;color:#a7f3d0;font-style:italic">Add accounts to see your wealth map</div>';
+    return;
+  }
+  let startAngle = -Math.PI / 2;
+  segments.forEach(seg => {
+    const sliceAngle = seg.amount / total * Math.PI * 2;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,R,startAngle,startAngle+sliceAngle); ctx.closePath();
+    ctx.fillStyle = seg.color; ctx.fill();
+    startAngle += sliceAngle;
+  });
+  ctx.beginPath(); ctx.arc(cx,cy,RI,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.95)'; ctx.fill();
+  el('pie-legend').innerHTML = segments.map(s => `
+    <div class="pie-leg-row">
+      <div class="pie-dot" style="background:${s.color}"></div>
+      <span class="pie-leg-label">${s.label}</span>
+      <span class="pie-leg-amt">${fmt(s.amount)}</span>
+      <span class="pie-leg-pct">${pct(s.amount,total)}%</span>
+    </div>`).join('');
+}
+function renderAllocSummary() {
+  const total = totalWealthFromBanks();
+  if (!banks.length) { el('alloc-summary').innerHTML = ''; return; }
+  const groups = [
+    { label:'Savings & Deposits', types:['savings','fixed'], color:'#10b981' },
+    { label:'Checking / Liquidity', types:['checking'], color:'#3b82f6' },
+    { label:'Investments', types:['investment'], color:'#8b5cf6' }
+  ].map(g => ({ ...g, amount:banks.filter(b=>g.types.includes(b.type)).reduce((s,b)=>s+b.amount,0) })).filter(g=>g.amount>0);
+  el('alloc-summary').innerHTML = `<div class="glass" style="padding:1.1rem"><div style="display:flex;flex-direction:column;gap:12px">${groups.map(g=>`<div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:500">${g.label}</span><span style="font-family:var(--font-d);font-size:13px;font-weight:700;color:${g.color}">${fmt(g.amount)} <span style="font-size:11px;color:var(--t3)">${pct(g.amount,total)}%</span></span></div><div class="pbar-bg"><div class="pbar" style="width:${pct(g.amount,total)}%;background:${g.color}"></div></div></div>`).join('')}</div></div>`;
+}
+
+// ── PRINCIPLES ────────────────────────────────────────────────────
+function renderPrinciples() {
+  const wrap = el('principles-list');
+  if (!principles.length) {
+    wrap.innerHTML = '<div class="empty">No principles yet - add your first investment rule or philosophy</div>'; return;
+  }
+  wrap.innerHTML = principles.map(p => `
+    <div class="glass" style="padding:1.1rem;margin-bottom:.65rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+        <div>
+          <div style="font-family:var(--font-d);font-size:15px;font-weight:700;color:var(--t);margin-bottom:4px">${p.title}</div>
+          ${p.tag?`<span style="display:inline-block;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:rgba(16,185,129,.12);color:#065f46">${p.tag}</span>`:''}
+        </div>
+        <div style="display:flex;gap:5px;flex-shrink:0">
+          <button class="btn btn-g btn-sm" onclick="editPrinciple(${p.id})">Edit</button>
+          <button class="btn btn-d btn-sm" onclick="dPrinciple(${p.id})">Delete</button>
+        </div>
+      </div>
+      ${p.body?`<div style="font-size:13px;color:var(--t2);line-height:1.7;white-space:pre-wrap;background:rgba(240,253,244,.5);border:1px solid #d1fae5;border-radius:10px;padding:.75rem 1rem;margin-top:8px">${p.body}</div>`:''}
+    </div>`).join('');
+}
