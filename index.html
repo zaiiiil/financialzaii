@@ -7,10 +7,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-<div class="blob b1"></div>
-<div class="blob b2"></div>
-<div class="blob b3"></div>
+<div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
 <div class="ov" id="ov"></div>
 
 <header class="hdr">
@@ -19,14 +16,13 @@
 </header>
 
 <nav class="tabs">
-  <button class="tab active" data-t="overview">💰 Overview</button>
-  <button class="tab" data-t="moneymap">🗺 Money Map</button>
-  <button class="tab" data-t="budget">📊 Budget Plan</button>
-  <button class="tab" data-t="invest">📈 Investments</button>
-  <button class="tab" data-t="spending">💸 Monthly Spending</button>
-  <button class="tab" data-t="principles">📝 Principles</button>
-  <button class="tab" data-t="alloc">⚖ Allocation Planner</button>
-  <button class="tab" data-t="alloc">⚖ Allocation Planner</button>
+  <button class="tab active" data-t="overview">Overview</button>
+  <button class="tab" data-t="moneymap">Money Map</button>
+  <button class="tab" data-t="budget">Budget Plan</button>
+  <button class="tab" data-t="alloc">Investment Allocation Planner</button>
+  <button class="tab" data-t="library">Product Library</button>
+  <button class="tab" data-t="spending">Monthly Spending</button>
+  <button class="tab" data-t="principles">Principles</button>
 </nav>
 
 <div class="main-wrap">
@@ -44,10 +40,10 @@
     <div id="overview-month"></div>
   </div>
 
-  <!-- MONEY MAP -->
+  <!-- MONEY MAP — TABLE FORMAT -->
   <div class="panel" id="p-moneymap">
     <div class="ph">
-      <div><div class="ptitle">Money Map</div><div class="psub">All accounts · income flow · wealth pie chart</div></div>
+      <div><div class="ptitle">Money Map</div><div class="psub">All accounts · income flow · wealth breakdown</div></div>
       <div class="pact">
         <button class="btn btn-g" id="btn-edit-mm-income">Edit Income</button>
         <button class="btn btn-p" id="btn-add-bank">+ Add Account</button>
@@ -56,20 +52,18 @@
     <div class="kpi-grid" id="mm-kpi-grid"></div>
     <div class="divl"><span>Monthly Income Flow</span></div>
     <div class="glass flow-card" id="income-flow"></div>
-    <div class="divl"><span>Bank & Account Distribution</span></div>
+    <div class="divl"><span>Accounts</span></div>
     <div class="fbar" id="bank-filter-bar">
       <button class="fc active" data-f="all">All</button>
-      <button class="fc" data-f="savings">Savings</button>
-      <button class="fc" data-f="checking">Checking</button>
       <button class="fc" data-f="fixed">Fixed Deposit</button>
-      <button class="fc" data-f="investment">Equities</button>
+      <button class="fc" data-f="checking">Liquidity / Cash</button>
       <button class="fc" data-f="fixedincome">Fixed Income</button>
+      <button class="fc" data-f="investment">Equities</button>
       <button class="fc" data-f="alternatives">Alternatives</button>
-      <button class="fc" data-f="hedges">Hedges</button>
       <button class="fc" data-f="gold">Gold</button>
     </div>
-    <div id="bank-list"></div>
-    <div class="divl"><span>Wealth Allocation Pie Chart</span></div>
+    <div id="bank-table-wrap"></div>
+    <div class="divl"><span>Wealth Breakdown</span></div>
     <div class="glass" id="pie-section">
       <div class="pie-wrap">
         <div class="pie-canvas-wrap">
@@ -89,7 +83,7 @@
   <!-- BUDGET PLAN -->
   <div class="panel" id="p-budget">
     <div class="ph">
-      <div><div class="ptitle">Budget Plan</div><div class="psub">Monthly income allocation — where your money should go</div></div>
+      <div><div class="ptitle">Budget Plan</div><div class="psub">Monthly income allocation</div></div>
       <div class="pact">
         <button class="btn btn-g" id="btn-set-income">Set Income</button>
         <button class="btn btn-p" id="btn-add-budget">+ Category</button>
@@ -100,21 +94,46 @@
     <div class="budget-grid" id="budget-grid"></div>
   </div>
 
-  <!-- INVESTMENTS -->
-  <div class="panel" id="p-invest">
+  <!-- INVESTMENT ALLOCATION PLANNER -->
+  <div class="panel" id="p-alloc">
     <div class="ph">
-      <div><div class="ptitle">Investment Plan</div><div class="psub">ETF portfolio allocation blueprint</div></div>
+      <div><div class="ptitle">Investment Allocation Planner</div><div class="psub">Set asset class weights · add products to each class · visualize your portfolio</div></div>
       <div class="pact">
         <button class="btn btn-g" id="btn-load-portfolio">Load My Portfolio</button>
         <button class="btn btn-g" id="btn-set-inv-budget">Set Monthly Amount</button>
-        <button class="btn btn-p" id="btn-add-inv">+ Add ETF</button>
       </div>
     </div>
-    <div id="inv-summary"></div>
-    <div class="divl"><span>Allocation Bar</span></div>
-    <div class="glass" style="padding:1.2rem;margin-bottom:1.2rem" id="alloc-bar-wrap"></div>
-    <div class="divl"><span>Portfolio</span></div>
-    <div class="inv-grid" id="inv-grid"></div>
+
+    <!-- Total wealth input -->
+    <div class="glass" style="padding:.9rem 1rem;margin-bottom:1.2rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:160px">
+        <div style="font-size:13px;font-weight:600;color:var(--t)">Total investment wealth (฿)</div>
+        <div style="font-size:11px;color:var(--t3)">Used to calculate ฿ amounts from percentages</div>
+      </div>
+      <input type="number" id="alloc-total-input" placeholder="1000000" step="10000"
+        oninput="onAllocTotalChange(this.value)"
+        style="width:160px;padding:8px 12px;border:1.5px solid #d1fae5;border-radius:10px;font-family:var(--font-d);font-size:15px;font-weight:700;color:var(--t);text-align:right;background:#f0fdf4">
+    </div>
+
+    <!-- Summary KPIs -->
+    <div class="kpi-grid" id="alloc-plan-stats"></div>
+
+    <!-- Two visualization bars -->
+    <div class="glass" style="padding:1.1rem;margin-bottom:1.2rem" id="alloc-viz"></div>
+
+    <div id="alloc-plan-msg" style="margin-bottom:1rem"></div>
+
+    <!-- Asset class sections with products -->
+    <div id="alloc-classes"></div>
+  </div>
+
+  <!-- PRODUCT LIBRARY -->
+  <div class="panel" id="p-library">
+    <div class="ph">
+      <div><div class="ptitle">Product Library</div><div class="psub">Products you find interesting — not yet allocated to your plan</div></div>
+      <button class="btn btn-p" id="btn-add-lib">+ Add Product</button>
+    </div>
+    <div id="lib-list"></div>
   </div>
 
   <!-- MONTHLY SPENDING -->
@@ -136,28 +155,13 @@
     <div id="principles-list"></div>
   </div>
 
-  <!-- ALLOCATION PLANNER -->
-  <div class="panel" id="p-alloc">
-    <div class="ph">
-      <div><div class="ptitle">Allocation Planner</div><div class="psub">Drag sliders · ฿ amounts calculate automatically</div></div>
-    </div>
-    <div class="kpi-grid" id="alloc-plan-stats"></div>
-    <div style="margin-bottom:8px" id="alloc-plan-bar"></div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px" id="alloc-plan-legend"></div>
-    <div id="alloc-plan-msg" style="margin-bottom:1.2rem"></div>
-    <div class="divl"><span>Cash & Banking</span></div>
-    <div id="alloc-cash-sliders"></div>
-    <div class="divl"><span>Investments</span></div>
-    <div id="alloc-inv-sliders"></div>
-  </div>
-
 </div>
 
 <!-- ══ MODALS ══ -->
 
-<!-- Overview targets -->
+<!-- Overview -->
 <div class="modal" id="m-overview">
-  <div class="mhdr"><h3>Edit Targets</h3><button class="mx" data-close="m-overview">×</button></div>
+  <div class="mhdr"><h3>Edit Targets</h3><button class="mx" data-close="m-overview">x</button></div>
   <div class="mbody">
     <div class="fld"><label>Monthly Income (฿) — overrides Money Map if set</label><input id="ov-income" type="number" placeholder="Leave blank to use Money Map salary"></div>
     <div class="fld"><label>Monthly Savings Target (฿)</label><input id="ov-save-target" type="number" placeholder="20000"></div>
@@ -168,7 +172,7 @@
 
 <!-- Money Map Income -->
 <div class="modal" id="m-mm-income">
-  <div class="mhdr"><h3>Monthly Income Flow</h3><button class="mx" data-close="m-mm-income">×</button></div>
+  <div class="mhdr"><h3>Monthly Income Flow</h3><button class="mx" data-close="m-mm-income">x</button></div>
   <div class="mbody">
     <div class="fld"><label>Monthly Salary (฿)</label><input id="ic-salary" type="number" placeholder="80000"></div>
     <div class="fld"><label>Auto-save to savings on payday (฿)</label><input id="ic-autosave" type="number" placeholder="20000"></div>
@@ -178,35 +182,34 @@
   <div class="mfoot"><button class="btn btn-g" data-close="m-mm-income">Cancel</button><button class="btn btn-p" id="sv-mm-income">Save</button></div>
 </div>
 
-<!-- Add Bank -->
+<!-- Add / Edit Bank Account -->
 <div class="modal" id="m-bank">
-  <div class="mhdr"><h3 id="m-bank-title">Add Bank / Account</h3><button class="mx" data-close="m-bank">×</button></div>
+  <div class="mhdr"><h3 id="m-bank-title">Add Account</h3><button class="mx" data-close="m-bank">x</button></div>
   <div class="mbody">
     <div class="r2">
       <div class="fld"><label>Bank Name</label><input id="bk-name" placeholder="e.g. Kasikorn Bank"></div>
-      <div class="fld"><label>Nickname</label><input id="bk-nick" placeholder="e.g. Emergency Fund"></div>
+      <div class="fld"><label>Nickname / Account Name</label><input id="bk-nick" placeholder="e.g. Emergency Fund"></div>
     </div>
     <div class="fld"><label>Account Type</label>
       <div class="type-pills" id="type-pills">
-        <button class="type-pill sel" data-type="savings">Savings</button>
-        <button class="type-pill" data-type="checking">Checking</button>
-        <button class="type-pill" data-type="fixed">Fixed Deposit</button>
-        <button class="type-pill" data-type="investment">Equities</button>
+        <button class="type-pill sel" data-type="fixed">Fixed Deposit</button>
+        <button class="type-pill" data-type="checking">Liquidity / Cash</button>
         <button class="type-pill" data-type="fixedincome">Fixed Income</button>
+        <button class="type-pill" data-type="investment">Equities</button>
         <button class="type-pill" data-type="alternatives">Alternatives</button>
-        <button class="type-pill" data-type="hedges">Hedges</button>
         <button class="type-pill" data-type="gold">Gold</button>
       </div>
     </div>
     <div class="r2">
-      <div class="fld"><label>Balance (฿)</label><input id="bk-amount" type="number" placeholder="100000"></div>
-      <div class="fld"><label>Annual Return % (optional)</label><input id="bk-return" type="number" step="0.1" placeholder="e.g. 3.5"></div>
+      <div class="fld"><label>Current Balance (฿)</label><input id="bk-amount" type="number" placeholder="100000"></div>
+      <div class="fld"><label>Annual Return %</label><input id="bk-return" type="number" step="0.01" placeholder="e.g. 1.35"></div>
     </div>
     <div class="r2">
       <div class="fld"><label>Purpose</label><input id="bk-purpose" placeholder="e.g. Emergency fund"></div>
-      <div class="fld"><label>Notes</label><input id="bk-notes" placeholder="e.g. Broker, fund code"></div>
+      <div class="fld"><label>Terms / Lock-up</label><input id="bk-terms" placeholder="e.g. 12 months, no lock"></div>
     </div>
-    <div class="fld"><label>Color</label>
+    <div class="fld"><label>Notes</label><input id="bk-notes" placeholder="e.g. Broker: SETTRADE, Fund code"></div>
+    <div class="fld"><label>Bank Color</label>
       <div class="color-row" id="color-row">
         <div class="color-swatch sel" data-color="#10b981" style="background:#10b981"></div>
         <div class="color-swatch" data-color="#3b82f6" style="background:#3b82f6"></div>
@@ -223,19 +226,19 @@
   <div class="mfoot"><button class="btn btn-g" data-close="m-bank">Cancel</button><button class="btn btn-p" id="sv-bank">Save</button></div>
 </div>
 
-<!-- Edit Bank -->
+<!-- Edit Bank (quick balance update kept for compatibility) -->
 <div class="modal" id="m-edit-bank">
-  <div class="mhdr"><h3>Update Balance</h3><button class="mx" data-close="m-edit-bank">×</button></div>
+  <div class="mhdr"><h3>Update Balance</h3><button class="mx" data-close="m-edit-bank">x</button></div>
   <div class="mbody">
     <div class="fld"><label>Current Balance (฿)</label><input id="eb-amount" type="number"></div>
-    <div class="fld"><label>Notes (optional)</label><input id="eb-notes" placeholder="update notes"></div>
+    <div class="fld"><label>Notes</label><input id="eb-notes" placeholder="update notes"></div>
   </div>
   <div class="mfoot"><button class="btn btn-g" data-close="m-edit-bank">Cancel</button><button class="btn btn-p" id="sv-edit-bank">Update</button></div>
 </div>
 
 <!-- Set Budget Income -->
 <div class="modal" id="m-income">
-  <div class="mhdr"><h3>Monthly Income</h3><button class="mx" data-close="m-income">×</button></div>
+  <div class="mhdr"><h3>Monthly Income</h3><button class="mx" data-close="m-income">x</button></div>
   <div class="mbody">
     <div class="fld"><label>Monthly Income (฿)</label><input id="inc-val" type="number" placeholder="80000"></div>
   </div>
@@ -244,11 +247,11 @@
 
 <!-- Budget Category -->
 <div class="modal" id="m-budget">
-  <div class="mhdr"><h3>Budget Category</h3><button class="mx" data-close="m-budget">×</button></div>
+  <div class="mhdr"><h3>Budget Category</h3><button class="mx" data-close="m-budget">x</button></div>
   <div class="mbody">
     <div class="r2">
       <div class="fld"><label>Category</label><input id="bc-name" placeholder="e.g. Food & Dining"></div>
-      <div class="fld"><label>Emoji</label><input id="bc-emoji" placeholder="🍜" maxlength="2" style="width:60px;font-size:18px"></div>
+      <div class="fld"><label>Emoji</label><input id="bc-emoji" placeholder="e.g. food" maxlength="2" style="width:60px;font-size:18px"></div>
     </div>
     <div class="r2">
       <div class="fld"><label>Monthly Budget (฿)</label><input id="bc-amount" type="number" placeholder="8000"></div>
@@ -265,67 +268,89 @@
   <div class="mfoot"><button class="btn btn-g" data-close="m-budget">Cancel</button><button class="btn btn-p" id="sv-budget">Save</button></div>
 </div>
 
-<!-- Investment Monthly Amount -->
+<!-- Monthly Investment Amount -->
 <div class="modal" id="m-inv-budget">
-  <div class="mhdr"><h3>Monthly Investment Amount</h3><button class="mx" data-close="m-inv-budget">×</button></div>
+  <div class="mhdr"><h3>Monthly Investment Amount</h3><button class="mx" data-close="m-inv-budget">x</button></div>
   <div class="mbody">
     <div class="fld"><label>Amount per month (฿)</label><input id="inv-monthly" type="number" placeholder="15000"></div>
-    <p class="hint">Split across your ETFs by their allocated percentages.</p>
+    <p class="hint">Split across your asset classes by their allocated percentages.</p>
   </div>
   <div class="mfoot"><button class="btn btn-g" data-close="m-inv-budget">Cancel</button><button class="btn btn-p" id="sv-inv-budget">Save</button></div>
 </div>
 
-<!-- Add ETF -->
-<div class="modal" id="m-inv">
-  <div class="mhdr"><h3>Add ETF / Fund</h3><button class="mx" data-close="m-inv">×</button></div>
+<!-- Add Product to Asset Class -->
+<div class="modal" id="m-prod">
+  <div class="mhdr"><h3 id="m-prod-title">Add Product</h3><button class="mx" data-close="m-prod">x</button></div>
   <div class="mbody">
+    <input type="hidden" id="prod-edit-id">
+    <input type="hidden" id="prod-class-id">
     <div class="r2">
-      <div class="fld"><label>Fund Name</label><input id="inv-name" placeholder="e.g. S&P 500 Index Fund"></div>
-      <div class="fld"><label>Ticker / Code</label><input id="inv-ticker" placeholder="e.g. SPY, VWRA"></div>
+      <div class="fld"><label>Product Name</label><input id="prod-name" placeholder="e.g. CSPX"></div>
+      <div class="fld"><label>Ticker / Code</label><input id="prod-ticker" placeholder="e.g. CSPX, KFAFIX-A"></div>
     </div>
     <div class="r2">
-      <div class="fld"><label>Allocation % of total investment</label><input id="inv-pct" type="number" min="0" max="100" placeholder="40"></div>
+      <div class="fld"><label>% of this asset class</label><input id="prod-pct" type="number" min="0" max="100" placeholder="40"></div>
+      <div class="fld"><label>Expected Return % p.a.</label><input id="prod-return" type="number" step="0.1" placeholder="e.g. 8"></div>
+    </div>
+    <div class="fld"><label>Description / What it is</label><textarea id="prod-desc" placeholder="e.g. iShares Core S&P 500 — tracks 500 largest US companies..."></textarea></div>
+    <div class="fld"><label>Notes / Why you chose it</label><textarea id="prod-notes" placeholder="e.g. Low expense ratio, core long-term holding..."></textarea></div>
+  </div>
+  <div class="mfoot"><button class="btn btn-g" data-close="m-prod">Cancel</button><button class="btn btn-p" id="sv-prod">Save</button></div>
+</div>
+
+<!-- Add to Product Library -->
+<div class="modal" id="m-lib">
+  <div class="mhdr"><h3 id="m-lib-title">Add to Library</h3><button class="mx" data-close="m-lib">x</button></div>
+  <div class="mbody">
+    <input type="hidden" id="lib-edit-id">
+    <div class="r2">
+      <div class="fld"><label>Product Name</label><input id="lib-name" placeholder="e.g. VWRA"></div>
+      <div class="fld"><label>Ticker / Code</label><input id="lib-ticker" placeholder="e.g. VWRA"></div>
+    </div>
+    <div class="r2">
       <div class="fld"><label>Asset Class</label>
-        <select id="inv-cat">
-          <option value="Equities">Equities</option>
+        <select id="lib-cat">
           <option value="Fixed Income">Fixed Income</option>
+          <option value="Equities">Equities</option>
           <option value="Alternatives">Alternatives</option>
-          <option value="Hedges">Hedges</option>
+          <option value="Gold">Gold</option>
           <option value="Other">Other</option>
         </select>
       </div>
+      <div class="fld"><label>Expected Return % p.a.</label><input id="lib-return" type="number" step="0.1" placeholder="e.g. 8"></div>
     </div>
-    <div class="fld"><label>Why you chose this</label><textarea id="inv-note" placeholder="e.g. Global diversification, low expense ratio…"></textarea></div>
+    <div class="fld"><label>Description / What it is</label><textarea id="lib-desc" placeholder="Plain-language description..."></textarea></div>
+    <div class="fld"><label>Notes / Why interesting</label><textarea id="lib-notes" placeholder="Why you saved this, pros/cons..."></textarea></div>
   </div>
-  <div class="mfoot"><button class="btn btn-g" data-close="m-inv">Cancel</button><button class="btn btn-p" id="sv-inv">Save</button></div>
+  <div class="mfoot"><button class="btn btn-g" data-close="m-lib">Cancel</button><button class="btn btn-p" id="sv-lib">Save</button></div>
 </div>
 
-<!-- Log Month — total auto-sums -->
+<!-- Log Month -->
 <div class="modal" id="m-month">
-  <div class="mhdr"><h3>Log Monthly Spending</h3><button class="mx" data-close="m-month">×</button></div>
+  <div class="mhdr"><h3>Log Monthly Spending</h3><button class="mx" data-close="m-month">x</button></div>
   <div class="mbody">
     <div class="fld"><label>Month</label><input id="ms-month" type="month"></div>
     <p class="hint">Enter each category — total auto-calculates:</p>
     <div class="r2">
-      <div class="fld"><label>🛍 Shopping & Clothes</label><input id="ms-shopping" type="number" placeholder="0" min="0"></div>
-      <div class="fld"><label>🚗 Transport</label><input id="ms-transport" type="number" placeholder="0" min="0"></div>
+      <div class="fld"><label>Shopping & Clothes</label><input id="ms-shopping" type="number" placeholder="0" min="0"></div>
+      <div class="fld"><label>Transport</label><input id="ms-transport" type="number" placeholder="0" min="0"></div>
     </div>
     <div class="r2">
-      <div class="fld"><label>💪 Health & Wellness</label><input id="ms-health" type="number" placeholder="0" min="0"></div>
-      <div class="fld"><label>🎉 Entertainment</label><input id="ms-entertainment" type="number" placeholder="0" min="0"></div>
+      <div class="fld"><label>Health & Wellness</label><input id="ms-health" type="number" placeholder="0" min="0"></div>
+      <div class="fld"><label>Entertainment</label><input id="ms-entertainment" type="number" placeholder="0" min="0"></div>
     </div>
     <div class="r2">
-      <div class="fld"><label>✈️ Travel</label><input id="ms-travel" type="number" placeholder="0" min="0"></div>
-      <div class="fld"><label>🏠 Rent & Bills</label><input id="ms-rent" type="number" placeholder="0" min="0"></div>
+      <div class="fld"><label>Travel</label><input id="ms-travel" type="number" placeholder="0" min="0"></div>
+      <div class="fld"><label>Rent & Bills</label><input id="ms-rent" type="number" placeholder="0" min="0"></div>
     </div>
     <div class="r2">
-      <div class="fld"><label>💄 Personal Care & Beauty</label><input id="ms-beauty" type="number" placeholder="0" min="0"></div>
-      <div class="fld"><label>☕ Eating Out & Cafes</label><input id="ms-food" type="number" placeholder="0" min="0"></div>
+      <div class="fld"><label>Personal Care & Beauty</label><input id="ms-beauty" type="number" placeholder="0" min="0"></div>
+      <div class="fld"><label>Eating Out & Cafes</label><input id="ms-food" type="number" placeholder="0" min="0"></div>
     </div>
-    <div class="fld"><label>📱 Subscriptions</label><input id="ms-subs" type="number" placeholder="0" min="0"></div>
+    <div class="fld"><label>Subscriptions</label><input id="ms-subs" type="number" placeholder="0" min="0"></div>
     <div class="fld" style="background:rgba(16,185,129,.06);border:1px solid #d1fae5;border-radius:10px;padding:.65rem .9rem">
       <label>Total (auto-calculated)</label>
-      <input id="ms-total" type="number" placeholder="฿0" readonly style="background:transparent;border:none;font-weight:700;font-size:15px;color:var(--t);padding:4px 0">
+      <input id="ms-total" type="number" placeholder="0" readonly style="background:transparent;border:none;font-weight:700;font-size:15px;color:var(--t);padding:4px 0">
     </div>
   </div>
   <div class="mfoot"><button class="btn btn-g" data-close="m-month">Cancel</button><button class="btn btn-p" id="sv-month">Save</button></div>
@@ -333,11 +358,11 @@
 
 <!-- Principle -->
 <div class="modal" id="m-principle">
-  <div class="mhdr"><h3 id="pr-modal-title">Add Principle</h3><button class="mx" data-close="m-principle">×</button></div>
+  <div class="mhdr"><h3 id="pr-modal-title">Add Principle</h3><button class="mx" data-close="m-principle">x</button></div>
   <div class="mbody">
     <div class="fld"><label>Title</label><input id="pr-title" placeholder="e.g. Never time the market"></div>
-    <div class="fld"><label>Tag / Category</label><input id="pr-tag" placeholder="e.g. Risk, Diversification, Mindset…"></div>
-    <div class="fld"><label>Notes / Detail</label><textarea id="pr-body" style="min-height:120px" placeholder="Explain the principle, where you learned it, why it matters to you…"></textarea></div>
+    <div class="fld"><label>Tag / Category</label><input id="pr-tag" placeholder="e.g. Risk, Diversification, Mindset"></div>
+    <div class="fld"><label>Notes / Detail</label><textarea id="pr-body" style="min-height:120px" placeholder="Explain the principle, where you learned it, why it matters to you..."></textarea></div>
   </div>
   <div class="mfoot"><button class="btn btn-g" data-close="m-principle">Cancel</button><button class="btn btn-p" id="sv-principle">Save</button></div>
 </div>
