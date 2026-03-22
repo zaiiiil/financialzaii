@@ -99,6 +99,7 @@
     <div class="ph">
       <div><div class="ptitle">Investment Plan</div><div class="psub">ETF portfolio allocation blueprint</div></div>
       <div class="pact">
+        <button class="btn btn-g" id="btn-load-portfolio">Load My Portfolio</button>
         <button class="btn btn-g" id="btn-set-inv-budget">Set Monthly Amount</button>
         <button class="btn btn-p" id="btn-add-inv">+ Add ETF</button>
       </div>
@@ -254,7 +255,18 @@
       <div class="fld"><label>Fund Name</label><input id="inv-name" placeholder="e.g. S&P 500 Index Fund"></div>
       <div class="fld"><label>Ticker / Code</label><input id="inv-ticker" placeholder="e.g. SPY, VWRA"></div>
     </div>
-    <div class="fld"><label>Allocation % of total investment</label><input id="inv-pct" type="number" min="0" max="100" placeholder="40"></div>
+    <div class="r2">
+      <div class="fld"><label>Allocation % of total investment</label><input id="inv-pct" type="number" min="0" max="100" placeholder="40"></div>
+      <div class="fld"><label>Asset Class</label>
+        <select id="inv-cat">
+          <option value="Equities">Equities</option>
+          <option value="Fixed Income">Fixed Income</option>
+          <option value="Alternatives">Alternatives</option>
+          <option value="Hedges">Hedges</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+    </div>
     <div class="fld"><label>Why you chose this</label><textarea id="inv-note" placeholder="e.g. Global diversification, low expense ratio…"></textarea></div>
   </div>
   <div class="mfoot"><button class="btn btn-g" data-close="m-inv">Cancel</button><button class="btn btn-p" id="sv-inv">Save</button></div>
@@ -302,6 +314,6 @@
   <div class="mfoot"><button class="btn btn-g" data-close="m-principle">Cancel</button><button class="btn btn-p" id="sv-principle">Save</button></div>
 </div>
 
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
