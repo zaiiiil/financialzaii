@@ -139,7 +139,8 @@ const SPEND_CATS = [
   { key:'food',          label:'Eating Out & Cafes',     icon:'[cafe]' },
   { key:'subs',          label:'Subscriptions',          icon:'[phone]' }
 ];
-const TYPE_LABELS = { savings:'Savings', checking:'Checking', investment:'Investment', fixed:'Fixed Deposit' };
+const TYPE_LABELS = { savings:'Savings', checking:'Checking', investment:'Equities', fixed:'Fixed Deposit', fixedincome:'Fixed Income', alternatives:'Alternatives', hedges:'Hedges', gold:'Gold' };
+const TYPE_COLORS = { savings:'#10b981', checking:'#3b82f6', investment:'#10b981', fixed:'#06b6d4', fixedincome:'#3b82f6', alternatives:'#8b5cf6', hedges:'#f59e0b', gold:'#f59e0b' };
 
 // ── HELPERS ───────────────────────────────────────────────────────
 const BAHT = '\u0E3F';
@@ -285,18 +286,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     await save(); renderMoneyMap(); renderOverview(); closeM('m-mm-income');
   });
   el('btn-add-bank')?.addEventListener('click', () => {
+    editBankIdx = null;
     selColor = '#10b981'; selType = 'savings';
     document.querySelectorAll('.color-swatch').forEach(x => x.classList.remove('sel'));
     document.querySelector('.color-swatch[data-color="#10b981"]')?.classList.add('sel');
     document.querySelectorAll('.type-pill').forEach(x => x.classList.remove('sel'));
     document.querySelector('.type-pill[data-type="savings"]')?.classList.add('sel');
+    el('m-bank-title').textContent = 'Add Bank / Account';
+    el('sv-bank').textContent = 'Save';
+    ['bk-name','bk-nick','bk-amount','bk-purpose','bk-notes','bk-return'].forEach(id => sv(id,''));
     openM('m-bank');
   });
   el('sv-bank')?.addEventListener('click', async () => {
     const name = v('bk-name'); if (!name) return;
-    banks.push({ id:Date.now(), name, nick:v('bk-nick'), type:selType, amount:+v('bk-amount')||0, purpose:v('bk-purpose'), color:selColor, notes:v('bk-notes') });
+    const entry = { name, nick:v('bk-nick'), type:selType, amount:+v('bk-amount')||0, purpose:v('bk-purpose'), color:selColor, notes:v('bk-notes'), returnPct:v('bk-return') };
+    if (editBankIdx !== null) {
+      banks[editBankIdx] = { ...banks[editBankIdx], ...entry };
+      editBankIdx = null;
+    } else {
+      banks.push({ id:Date.now(), ...entry });
+    }
+    el('m-bank-title').textContent = 'Add Bank / Account';
+    el('sv-bank').textContent = 'Save';
     await save(); renderMoneyMap(); renderOverview();
-    ['bk-name','bk-nick','bk-amount','bk-purpose','bk-notes'].forEach(id => sv(id,'')); closeM('m-bank');
+    ['bk-name','bk-nick','bk-amount','bk-purpose','bk-notes','bk-return'].forEach(id => sv(id,'')); closeM('m-bank');
   });
   el('sv-edit-bank')?.addEventListener('click', async () => {
     if (editBankIdx === null) return;
@@ -304,7 +317,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (v('eb-notes')) banks[editBankIdx].notes = v('eb-notes');
     await save(); renderMoneyMap(); renderOverview(); closeM('m-edit-bank'); editBankIdx = null;
   });
-  window.editBank = i => { editBankIdx = i; sv('eb-amount', banks[i].amount); sv('eb-notes', banks[i].notes||''); openM('m-edit-bank'); };
+  window.editBank = i => {
+  editBankIdx = i;
+  const b = banks[i];
+  // Pre-fill full add bank modal for editing
+  sv('bk-name', b.name); sv('bk-nick', b.nick||''); sv('bk-amount', b.amount);
+  sv('bk-purpose', b.purpose||''); sv('bk-notes', b.notes||'');
+  sv('bk-return', b.returnPct||'');
+  selColor = b.color; selType = b.type;
+  document.querySelectorAll('.color-swatch').forEach(x => x.classList.remove('sel'));
+  document.querySelector(`.color-swatch[data-color="${b.color}"]`)?.classList.add('sel');
+  document.querySelectorAll('.type-pill').forEach(x => x.classList.remove('sel'));
+  document.querySelector(`.type-pill[data-type="${b.type}"]`)?.classList.add('sel');
+  el('m-bank-title').textContent = 'Edit Account';
+  el('sv-bank').textContent = 'Save Changes';
+  openM('m-bank');
+};
   window.dBank = async i => { banks.splice(i,1); await save(); renderMoneyMap(); renderOverview(); };
 
   // Principles
@@ -608,20 +636,25 @@ function renderBanks() {
   wrap.innerHTML = filtered.map(b => {
     const ri = banks.indexOf(b), p = pct(b.amount, total);
     const init = b.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const typeColor = TYPE_COLORS[b.type] || b.color;
     return `<div class="glass bank-card">
-      <div class="bank-init" style="background:${b.color}">${init}</div>
+      <div class="bank-init" style="background:${typeColor}">${init}</div>
       <div class="bank-body">
         <div class="bank-name">${b.nick||b.name}</div>
-        <div class="bank-sub">${b.name} - ${TYPE_LABELS[b.type]}</div>
-        ${b.purpose?`<div style="font-size:11px;color:var(--t2);margin-top:2px">Purpose: ${b.purpose}</div>`:''}
-        ${b.notes?`<div style="font-size:11px;color:var(--t3);margin-top:1px">Note: ${b.notes}</div>`:''}
-        <div class="bank-bar"><div class="bank-bar-fill" style="background:${b.color};width:${p}%"></div></div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:2px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--t3)">${b.name}</span>
+          <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:${typeColor}18;color:${typeColor}">${TYPE_LABELS[b.type]||b.type}</span>
+          ${b.returnPct?`<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:rgba(16,185,129,.1);color:#065f46">+${b.returnPct}% p.a.</span>`:''}
+        </div>
+        ${b.purpose?`<div style="font-size:11px;color:var(--t2);margin-top:3px">${b.purpose}</div>`:''}
+        ${b.notes?`<div style="font-size:11px;color:var(--t3);margin-top:1px">${b.notes}</div>`:''}
+        <div class="bank-bar"><div class="bank-bar-fill" style="background:${typeColor};width:${p}%"></div></div>
       </div>
       <div class="bank-right">
         <div class="bank-amt">${fmt(b.amount)}</div>
-        <div class="bank-pct-badge" style="background:${b.color}">${p}%</div>
+        <div class="bank-pct-badge" style="background:${typeColor}">${p}% of wealth</div>
         <div style="display:flex;gap:4px;margin-top:6px;justify-content:flex-end">
-          <button class="btn btn-g btn-sm" onclick="editBank(${ri})">Edit</button>
+          <button class="btn btn-g btn-sm" onclick="editBank(${ri})" title="Edit all fields">✏ Edit</button>
           <button class="btn btn-d" onclick="dBank(${ri})">x</button>
         </div>
       </div>
@@ -636,7 +669,17 @@ function renderPie() {
   const ctx = canvas.getContext('2d');
   const W=200,H=200,cx=W/2,cy=H/2,R=88,RI=56;
   ctx.clearRect(0,0,W,H);
-  const segments = banks.filter(b => b.amount > 0).map(b => ({ label:b.nick||b.name, amount:b.amount, color:b.color }));
+
+  // Group by asset type
+  const typeMap = {};
+  banks.filter(b => b.amount > 0).forEach(b => {
+    const label = TYPE_LABELS[b.type] || b.type;
+    const color = TYPE_COLORS[b.type] || b.color;
+    if (!typeMap[label]) typeMap[label] = { amount:0, color };
+    typeMap[label].amount += b.amount;
+  });
+  const segments = Object.entries(typeMap).map(([label,v]) => ({ label, amount:v.amount, color:v.color })).sort((a,b)=>b.amount-a.amount);
+
   if (!segments.length||total===0) {
     ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fillStyle='#f0fdf4'; ctx.fill();
     ctx.beginPath(); ctx.arc(cx,cy,RI,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.95)'; ctx.fill();
@@ -663,9 +706,14 @@ function renderAllocSummary() {
   const total = totalWealthFromBanks();
   if (!banks.length) { el('alloc-summary').innerHTML = ''; return; }
   const groups = [
-    { label:'Savings & Deposits', types:['savings','fixed'], color:'#10b981' },
-    { label:'Checking / Liquidity', types:['checking'], color:'#3b82f6' },
-    { label:'Investments', types:['investment'], color:'#8b5cf6' }
+    { label:'Savings',      types:['savings'],                  color:'#10b981' },
+    { label:'Fixed Deposit', types:['fixed'],                   color:'#06b6d4' },
+    { label:'Checking',     types:['checking'],                 color:'#3b82f6' },
+    { label:'Equities',     types:['investment'],               color:'#10b981' },
+    { label:'Fixed Income', types:['fixedincome'],              color:'#3b82f6' },
+    { label:'Alternatives', types:['alternatives'],             color:'#8b5cf6' },
+    { label:'Hedges',       types:['hedges'],                   color:'#f59e0b' },
+    { label:'Gold',         types:['gold'],                     color:'#f59e0b' }
   ].map(g => ({ ...g, amount:banks.filter(b=>g.types.includes(b.type)).reduce((s,b)=>s+b.amount,0) })).filter(g=>g.amount>0);
   el('alloc-summary').innerHTML = `<div class="glass" style="padding:1.1rem"><div style="display:flex;flex-direction:column;gap:12px">${groups.map(g=>`<div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:500">${g.label}</span><span style="font-family:var(--font-d);font-size:13px;font-weight:700;color:${g.color}">${fmt(g.amount)} <span style="font-size:11px;color:var(--t3)">${pct(g.amount,total)}%</span></span></div><div class="pbar-bg"><div class="pbar" style="width:${pct(g.amount,total)}%;background:${g.color}"></div></div></div>`).join('')}</div></div>`;
 }
@@ -689,3 +737,118 @@ function renderPrinciples() {
       ${p.body?`<div style="font-size:13px;color:var(--t2);line-height:1.7;white-space:pre-wrap;background:rgba(240,253,244,.5);border:1px solid #d1fae5;border-radius:10px;padding:.75rem 1rem;margin-top:8px">${p.body}</div>`:''}
     </div>`).join('');
 }
+
+// ── ALLOCATION PLANNER ────────────────────────────────────────────
+const ALLOC_CATS = [
+  { id:'savings',      label:'Savings',       sub:'Cash in savings accounts',       color:'#10b981', group:'cash' },
+  { id:'fixed',        label:'Fixed Deposit', sub:'Term deposits, fixed savings',    color:'#06b6d4', group:'cash' },
+  { id:'checking',     label:'Checking',      sub:'Day-to-day liquidity',            color:'#3b82f6', group:'cash' },
+  { id:'fixedincome',  label:'Fixed Income',  sub:'Bonds — KFAFIX-A, K-APB-A(A)',   color:'#3b82f6', group:'inv'  },
+  { id:'investment',   label:'Equities',      sub:'CSPX, TDIV, VAPX, DXJ, EMXC',   color:'#10b981', group:'inv'  },
+  { id:'alternatives', label:'Alternatives',  sub:'HGER, IGF — commodities, infra', color:'#8b5cf6', group:'inv'  },
+  { id:'hedges',       label:'Hedges',        sub:'DBMF — trend-following',          color:'#f59e0b', group:'inv'  },
+  { id:'gold',         label:'Gold',          sub:'Physical gold or gold ETF',       color:'#f97316', group:'inv'  },
+];
+
+let allocPcts = {};
+ALLOC_CATS.forEach(c => allocPcts[c.id] = 0);
+
+// Pre-fill from user's actual Money Map when tab opens
+function initAllocPlanner() {
+  const total = totalWealthFromBanks();
+  if (total > 0) {
+    // Calculate current % per type from actual banks
+    ALLOC_CATS.forEach(c => {
+      const typeTotal = banks.filter(b => b.type === c.id).reduce((s,b) => s+b.amount, 0);
+      allocPcts[c.id] = Math.round(typeTotal / total * 100);
+    });
+  } else {
+    // Default to dashboard weights if no banks set up yet
+    const defaults = { savings:20, fixed:10, checking:5, fixedincome:30, investment:25, alternatives:5, hedges:3, gold:2 };
+    ALLOC_CATS.forEach(c => allocPcts[c.id] = defaults[c.id] || 0);
+  }
+  buildAllocSliders('cash', 'alloc-cash-sliders');
+  buildAllocSliders('inv',  'alloc-inv-sliders');
+  recalcAlloc();
+}
+
+function buildAllocSliders(group, wrapId) {
+  const wrap = el(wrapId); if (!wrap) return;
+  const cats = ALLOC_CATS.filter(c => c.group === group);
+  wrap.innerHTML = cats.map(c => `
+    <div class="glass" style="padding:.85rem 1rem;margin-bottom:.5rem;display:flex;align-items:center;gap:12px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--t)">${c.label}</div>
+        <div style="font-size:11px;color:var(--t3)">${c.sub}</div>
+        <div style="margin-top:6px;height:4px;background:#f0fdf4;border-radius:20px;overflow:hidden">
+          <div id="ap-bar-${c.id}" style="height:4px;background:${c.color};border-radius:20px;transition:width .3s;width:${allocPcts[c.id]}%"></div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input type="number" min="0" max="100" step="1" value="${allocPcts[c.id]}"
+          id="ap-sl-${c.id}"
+          style="width:64px;padding:6px 8px;border:1.5px solid ${c.color}40;border-radius:10px;font-family:var(--font-d);font-size:15px;font-weight:700;color:${c.color};text-align:center;background:#f0fdf4"
+          oninput="onAllocSlide('${c.id}',this.value)">
+        <span style="font-size:12px;color:var(--t3);font-weight:600">%</span>
+      </div>
+      <div style="font-family:var(--font-d);font-size:14px;font-weight:700;color:${c.color};min-width:110px;text-align:right" id="ap-amt-${c.id}">${fmt(0)}</div>
+    </div>`).join('');
+}
+
+window.onAllocSlide = (id, val) => {
+  allocPcts[id] = Math.min(100, Math.max(0, parseInt(val)||0));
+  recalcAlloc();
+};
+
+function recalcAlloc() {
+  const total = totalWealthFromBanks() || 1000000;
+  const sum = ALLOC_CATS.reduce((s,c) => s + allocPcts[c.id], 0);
+
+  ALLOC_CATS.forEach(c => {
+    const amt = total * allocPcts[c.id] / 100;
+    const pEl = el('ap-pct-'+c.id); if(pEl) pEl.textContent = allocPcts[c.id] + '%';
+    const aEl = el('ap-amt-'+c.id); if(aEl) aEl.textContent = fmt(amt);
+    const bEl = el('ap-bar-'+c.id); if(bEl) bEl.style.width = allocPcts[c.id] + '%';
+  });
+
+  // Rainbow bar
+  const barEl = el('alloc-plan-bar');
+  if (barEl) {
+    barEl.innerHTML = `
+      <div style="display:flex;height:12px;border-radius:20px;overflow:hidden;gap:1px">
+        ${ALLOC_CATS.filter(c=>allocPcts[c.id]>0).map(c=>`<div style="height:12px;background:${c.color};width:${allocPcts[c.id]}%;min-width:2px;transition:width .2s" title="${c.label}: ${allocPcts[c.id]}%"></div>`).join('')}
+        ${sum<100?`<div style="flex:1;background:#f0fdf4;min-width:0"></div>`:''}
+      </div>`;
+  }
+
+  // Legend
+  const legEl = el('alloc-plan-legend');
+  if (legEl) legEl.innerHTML = ALLOC_CATS.filter(c=>allocPcts[c.id]>0).map(c=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--t2)"><div style="width:8px;height:8px;border-radius:50%;background:${c.color}"></div>${c.label} ${allocPcts[c.id]}%</div>`).join('');
+
+  // Status message
+  const msgEl = el('alloc-plan-msg');
+  if (msgEl) {
+    if (sum === 100) msgEl.innerHTML = `<div style="font-size:12px;font-weight:600;color:var(--green)">Perfectly balanced at 100%</div>`;
+    else if (sum > 100) msgEl.innerHTML = `<div style="font-size:12px;font-weight:600;color:var(--red)">Over-allocated by ${sum-100}% — reduce some sliders</div>`;
+    else msgEl.innerHTML = `<div style="font-size:12px;font-weight:600;color:var(--amber)">${100-sum}% unallocated — keep adjusting to reach 100%</div>`;
+  }
+
+  // Summary KPIs
+  const cashTotal = ALLOC_CATS.filter(c=>c.group==='cash').reduce((s,c)=>s+allocPcts[c.id],0);
+  const invTotal  = ALLOC_CATS.filter(c=>c.group==='inv').reduce((s,c)=>s+allocPcts[c.id],0);
+  const statsEl = el('alloc-plan-stats');
+  if (statsEl) statsEl.innerHTML = `
+    <div class="kpi"><div class="kpi-lbl">Total Allocated</div><div class="kpi-val" style="color:${sum===100?'var(--green)':sum>100?'var(--red)':'var(--amber)'}">${sum}%</div></div>
+    <div class="kpi"><div class="kpi-lbl">Total Wealth</div><div class="kpi-val g-text">${fmt(total)}</div><div class="kpi-sub">from Money Map</div></div>
+    <div class="kpi"><div class="kpi-lbl">Cash & Banking</div><div class="kpi-val" style="color:#3b82f6">${fmt(total*cashTotal/100)}</div><div class="kpi-sub">${cashTotal}%</div></div>
+    <div class="kpi"><div class="kpi-lbl">Invested</div><div class="kpi-val" style="color:#10b981">${fmt(total*invTotal/100)}</div><div class="kpi-sub">${invTotal}%</div></div>
+    <div class="kpi"><div class="kpi-lbl">Unallocated</div><div class="kpi-val" style="color:var(--t3)">${fmt(Math.max(0,total*(100-sum)/100))}</div><div class="kpi-sub">${Math.max(0,100-sum)}%</div></div>
+  `;
+}
+
+// Wire up tab click to init planner
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.tab[data-t="alloc"]').forEach(b => {
+    b.addEventListener('click', () => setTimeout(initAllocPlanner, 50));
+  });
+});
