@@ -1,19 +1,95 @@
-// ── STORAGE ──────────────────────────────────────────────────────
+// ── FIREBASE SETUP ────────────────────────────────────────────────
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyA7BoxdHTTbQyPQZEPje8c_IaaInbJUe8w",
+  authDomain: "my-portal-fd675.firebaseapp.com",
+  projectId: "my-portal-fd675",
+  storageBucket: "my-portal-fd675.firebasestorage.app",
+  messagingSenderId: "901831637749",
+  appId: "1:901831637749:web:fa93c3208fff016036e3bc"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const DOC_ID = "finance";
+
+// ── STORAGE (Firebase + localStorage fallback) ────────────────────
 const LS = {
   g:  k => { try { return JSON.parse(localStorage.getItem(k) || 'null') } catch { return null } },
   gA: k => { try { return JSON.parse(localStorage.getItem(k) || '[]')   } catch { return [] }  },
   s:  (k,v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
 };
 
+async function loadFromFirebase() {
+  try {
+    const snap = await getDoc(doc(db, "portals", DOC_ID));
+    if (snap.exists()) {
+      const d = snap.data();
+      overview    = d.overview    || { income:0, saveTarget:0 };
+      budget      = d.budget      || [];
+      investments = d.investments || [];
+      invMonthly  = d.invMonthly  || 0;
+      months      = d.months      || [];
+      principles  = d.principles  || [];
+      banks       = d.banks       || [];
+      mmIncome    = d.mmIncome    || { salary:0, autosave:0, autoinvest:0 };
+      console.log("Loaded from Firebase");
+    } else {
+      // First time — migrate from localStorage
+      await migrateFromLocalStorage();
+    }
+  } catch(e) {
+    console.warn("Firebase load failed, using localStorage:", e);
+  }
+}
+
+async function migrateFromLocalStorage() {
+  const lsOverview = LS.g('fp_overview');
+  if (lsOverview || LS.gA('mm_banks').length) {
+    overview    = LS.g('fp_overview')    || { income:0, saveTarget:0 };
+    budget      = LS.gA('fp_budget');
+    investments = LS.gA('fp_investments');
+    invMonthly  = LS.g('fp_inv_monthly') || 0;
+    months      = LS.gA('fp_months');
+    principles  = LS.gA('fp_principles');
+    banks       = LS.gA('mm_banks');
+    mmIncome    = LS.g('mm_income') || { salary:0, autosave:0, autoinvest:0 };
+    await saveToFirebase();
+    console.log("Migrated from localStorage to Firebase");
+  }
+}
+
+async function saveToFirebase() {
+  try {
+    await setDoc(doc(db, "portals", DOC_ID), {
+      overview, budget, investments, invMonthly,
+      months, principles, banks, mmIncome
+    });
+  } catch(e) {
+    console.warn("Firebase save failed:", e);
+    // Fallback to localStorage
+    LS.s('fp_overview', overview);
+    LS.s('fp_budget', budget);
+    LS.s('fp_investments', investments);
+    LS.s('fp_inv_monthly', invMonthly);
+    LS.s('fp_months', months);
+    LS.s('fp_principles', principles);
+    LS.s('mm_banks', banks);
+    LS.s('mm_income', mmIncome);
+  }
+}
+
 // ── STATE ─────────────────────────────────────────────────────────
-let overview    = LS.g('fp_overview')    || { income:0, saveTarget:0 };
-let budget      = LS.gA('fp_budget');
-let investments = LS.gA('fp_investments');
-let invMonthly  = LS.g('fp_inv_monthly') || 0;
-let months      = LS.gA('fp_months');
-let principles  = LS.gA('fp_principles');
-let banks       = LS.gA('mm_banks');
-let mmIncome    = LS.g('mm_income') || { salary:0, autosave:0, autoinvest:0 };
+let overview    = { income:0, saveTarget:0 };
+let budget      = [];
+let investments = [];
+let invMonthly  = 0;
+let months      = [];
+let principles  = [];
+let banks       = [];
+let mmIncome    = { salary:0, autosave:0, autoinvest:0 };
 
 let editBankIdx = null, editPrincipleId = null;
 let bankFilter = 'all';
@@ -21,6 +97,37 @@ let selColor = '#10b981', selType = 'savings';
 
 // ── CONSTANTS ─────────────────────────────────────────────────────
 const INV_COLORS = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ec4899','#06b6d4','#84cc16','#f97316','#6366f1'];
+const INV_CATEGORIES = {
+  'Fixed Income': { color:'#3b82f6', desc:'Bonds and debt instruments that pay regular interest. Lower risk than equities. You lend money to governments or companies and get predictable returns. The portfolio anchor.' },
+  'Equities':     { color:'#10b981', desc:'Shares in companies. Higher growth potential but more volatile. Over long periods, equities have historically outperformed other asset classes.' },
+  'Alternatives': { color:'#8b5cf6', desc:'Non-traditional assets like commodities, real estate, or multi-asset funds. They move differently from stocks and bonds, reducing overall portfolio risk through diversification.' },
+  'Hedges':       { color:'#f59e0b', desc:'Assets designed to protect your portfolio when markets fall - like gold, managed futures, or trend-following funds. Cushion losses in downturns.' },
+  'Other':        { color:'#9ca3af', desc:'Uncategorized investment.' }
+};
+const FUND_LEARN = {
+  'KFAFIX-A':   'Fixed Income | 20% of portfolio. Thai investment-grade bond fund - government and high-quality corporate bonds. The most stable holding. Low volatility, predictable returns. The anchor when global markets get choppy.',
+  'K-APB-A(A)': 'Fixed Income | 10% of portfolio. KAsset Asia Pacific Bond Fund - invests across Asian debt markets including Thailand, Singapore and Korea. Slightly higher yield than pure Thai bonds with modest currency exposure.',
+  'CSPX':       'Equities | 16% of portfolio. iShares Core S&P 500 UCITS ETF - tracks the 500 largest US companies. Apple, Microsoft, Nvidia, Amazon. Broadest cheapest exposure to the American economy. Core long-term growth engine.',
+  'TDIV':       'Equities | 16% of portfolio. VanEck Developed Markets Dividend Leaders ETF - top dividend-paying companies across Europe, US and developed Asia. Combines steady income with equity growth. Lower volatility than pure growth ETFs.',
+  'VAPX':       'Equities | 10% of portfolio. Vanguard FTSE Asia Pacific ex Japan - South Korea, Australia, Taiwan, Hong Kong, Singapore. Captures Asia-Pacific growth without overexposure to Japan or China.',
+  'DXJ':        'Equities | 7% of portfolio. WisdomTree Japan Hedged Equity Fund - Japanese stocks with USD/JPY currency risk removed. You get Japan equity performance without being hurt if the yen weakens further against the baht.',
+  'EMXC':       'Equities | 6% of portfolio. iShares MSCI Emerging Markets ex China - India, Taiwan, Korea, Brazil, Mexico and more, deliberately excluding China. Captures EM growth while avoiding China-specific political and regulatory risk.',
+  'HGER':       'Alternatives | 5% of portfolio. Harbor Commodity All-Weather Strategy - broad commodities (energy, metals, agriculture). Rises with inflation. Protects purchasing power when bonds and stocks both struggle. Portfolio inflation shield.',
+  'IGF':        'Alternatives | 5% of portfolio. iShares Global Infrastructure ETF - airports, toll roads, utilities, pipelines worldwide. Highly stable cash flows. Defensive in downturns, benefits from infrastructure spending cycles.',
+  'DBMF':       'Hedges | 5% of portfolio. iMGP DBi Managed Futures Strategy - replicates hedge fund trend-following. Historically profits during major crashes (2008, 2020, 2022). Portfolio insurance. May underperform in calm bull markets.'
+};
+const PORTFOLIO_TEMPLATE = [
+  { name:'KFAFIX-A',   ticker:'KFAFIX-A',   cat:'Fixed Income', pct:20 },
+  { name:'K-APB-A(A)', ticker:'K-APB-A(A)', cat:'Fixed Income', pct:10 },
+  { name:'CSPX',       ticker:'CSPX',       cat:'Equities',     pct:16 },
+  { name:'TDIV',       ticker:'TDIV',       cat:'Equities',     pct:16 },
+  { name:'VAPX',       ticker:'VAPX',       cat:'Equities',     pct:10 },
+  { name:'DXJ',        ticker:'DXJ',        cat:'Equities',     pct:7  },
+  { name:'EMXC',       ticker:'EMXC',       cat:'Equities',     pct:6  },
+  { name:'HGER',       ticker:'HGER',       cat:'Alternatives', pct:5  },
+  { name:'IGF',        ticker:'IGF',        cat:'Alternatives', pct:5  },
+  { name:'DBMF',       ticker:'DBMF',       cat:'Hedges',       pct:5  }
+];
 const SPEND_CATS = [
   { key:'shopping',      label:'Shopping & Clothes',    icon:'[shop]' },
   { key:'transport',     label:'Transport',              icon:'[car]' },
@@ -33,7 +140,6 @@ const SPEND_CATS = [
   { key:'subs',          label:'Subscriptions',          icon:'[phone]' }
 ];
 const TYPE_LABELS = { savings:'Savings', checking:'Checking', investment:'Investment', fixed:'Fixed Deposit' };
-const TYPE_ICONS  = { savings:'[savings]', checking:'[checking]', investment:'[invest]', fixed:'[fixed]' };
 
 // ── HELPERS ───────────────────────────────────────────────────────
 const BAHT = '\u0E3F';
@@ -45,21 +151,27 @@ const el  = id => document.getElementById(id);
 const fD  = s => { if(!s) return ''; return new Date(s+'T12:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
 const fM  = s => { if(!s) return ''; const [y,m] = s.split('-'); return new Date(y,m-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'}); };
 
-// ── DERIVED FROM MONEY MAP ────────────────────────────────────────
-function totalSavingsFromBanks() {
-  return banks.filter(b => ['savings','fixed','checking'].includes(b.type)).reduce((s,b) => s+b.amount, 0);
-}
-function totalInvestedFromBanks() {
-  return banks.filter(b => b.type==='investment').reduce((s,b) => s+b.amount, 0);
-}
-function totalWealthFromBanks() {
-  return banks.reduce((s,b) => s+b.amount, 0);
-}
+// ── DERIVED ───────────────────────────────────────────────────────
+const totalSavingsFromBanks  = () => banks.filter(b => ['savings','fixed','checking'].includes(b.type)).reduce((s,b) => s+b.amount, 0);
+const totalInvestedFromBanks = () => banks.filter(b => b.type==='investment').reduce((s,b) => s+b.amount, 0);
+const totalWealthFromBanks   = () => banks.reduce((s,b) => s+b.amount, 0);
+
+// ── SAVE SHORTCUT ─────────────────────────────────────────────────
+const save = () => saveToFirebase();
 
 // ── INIT ──────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   el('hdate').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
 
+  // Show loading state
+  document.querySelectorAll('.panel').forEach(p => p.style.opacity = '0.4');
+
+  await loadFromFirebase();
+
+  // Restore opacity
+  document.querySelectorAll('.panel').forEach(p => p.style.opacity = '1');
+
+  // Tabs
   document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
@@ -102,39 +214,47 @@ document.addEventListener('DOMContentLoaded', () => {
     sv('ov-save-target', overview.saveTarget);
     openM('m-overview');
   });
-  el('sv-overview')?.addEventListener('click', () => {
+  el('sv-overview')?.addEventListener('click', async () => {
     overview = { income:+v('ov-income'), saveTarget:+v('ov-save-target') };
-    LS.s('fp_overview', overview); renderOverview(); closeM('m-overview');
+    await save(); renderOverview(); closeM('m-overview');
   });
 
   // Budget
   el('btn-set-income')?.addEventListener('click', () => { sv('inc-val', overview.income||mmIncome.salary); openM('m-income'); });
-  el('sv-income')?.addEventListener('click', () => {
+  el('sv-income')?.addEventListener('click', async () => {
     overview.income = +v('inc-val');
-    LS.s('fp_overview', overview); renderOverview(); renderBudget(); closeM('m-income');
+    await save(); renderOverview(); renderBudget(); closeM('m-income');
   });
   el('btn-add-budget')?.addEventListener('click', () => openM('m-budget'));
-  el('sv-budget')?.addEventListener('click', () => {
+  el('sv-budget')?.addEventListener('click', async () => {
     const name = v('bc-name'); if (!name) return;
     budget.push({ id:Date.now(), name, emoji:el('bc-emoji').value.trim()||'*', amount:+v('bc-amount')||0, color:el('bc-color').value });
-    LS.s('fp_budget', budget); renderBudget(); renderOverview();
+    await save(); renderBudget(); renderOverview();
     ['bc-name','bc-amount'].forEach(id => sv(id,'')); closeM('m-budget');
   });
-  window.dBudget = i => { budget.splice(i,1); LS.s('fp_budget',budget); renderBudget(); renderOverview(); };
+  window.dBudget = async i => { budget.splice(i,1); await save(); renderBudget(); renderOverview(); };
 
   // Investments
   el('btn-set-inv-budget')?.addEventListener('click', () => { sv('inv-monthly', invMonthly); openM('m-inv-budget'); });
-  el('sv-inv-budget')?.addEventListener('click', () => {
-    invMonthly = +v('inv-monthly'); LS.s('fp_inv_monthly', invMonthly); renderInvestments(); closeM('m-inv-budget');
+  el('sv-inv-budget')?.addEventListener('click', async () => {
+    invMonthly = +v('inv-monthly'); await save(); renderInvestments(); closeM('m-inv-budget');
+  });
+  el('btn-load-portfolio')?.addEventListener('click', async () => {
+    if (investments.length > 0) {
+      if (!confirm('This will replace your current investments with the 10-fund portfolio from your dashboard. Continue?')) return;
+    }
+    investments = PORTFOLIO_TEMPLATE.map((t,i) => ({ ...t, id:Date.now()+i, note:'', color:INV_COLORS[i%INV_COLORS.length] }));
+    await save(); renderInvestments();
   });
   el('btn-add-inv')?.addEventListener('click', () => openM('m-inv'));
-  el('sv-inv')?.addEventListener('click', () => {
+  el('sv-inv')?.addEventListener('click', async () => {
     const name = v('inv-name'); if (!name) return;
-    investments.push({ id:Date.now(), name, ticker:v('inv-ticker'), pct:+v('inv-pct')||0, note:v('inv-note'), color:INV_COLORS[investments.length%INV_COLORS.length] });
-    LS.s('fp_investments', investments); renderInvestments();
+    const cat = el('inv-cat')?.value || 'Other';
+    investments.push({ id:Date.now(), name, ticker:v('inv-ticker'), pct:+v('inv-pct')||0, cat, note:v('inv-note'), color:INV_COLORS[investments.length%INV_COLORS.length] });
+    await save(); renderInvestments();
     ['inv-name','inv-ticker','inv-pct','inv-note'].forEach(id => sv(id,'')); closeM('m-inv');
   });
-  window.dInv = i => { investments.splice(i,1); LS.s('fp_investments',investments); renderInvestments(); };
+  window.dInv = async i => { investments.splice(i,1); await save(); renderInvestments(); };
 
   // Monthly Spending
   el('btn-add-month')?.addEventListener('click', () => {
@@ -144,25 +264,25 @@ document.addEventListener('DOMContentLoaded', () => {
     sv('ms-total','');
     openM('m-month');
   });
-  el('sv-month')?.addEventListener('click', () => {
+  el('sv-month')?.addEventListener('click', async () => {
     const month = v('ms-month'); if (!month) return;
     const entry = { month };
     SPEND_CATS.forEach(c => { entry[c.key] = +(el('ms-'+c.key)?.value||0); });
     entry.total = SPEND_CATS.reduce((s,c) => s+entry[c.key], 0);
     const existing = months.findIndex(m => m.month === month);
     if (existing >= 0) months[existing] = entry; else months.push(entry);
-    LS.s('fp_months', months); renderSpending(); renderOverview();
+    await save(); renderSpending(); renderOverview();
     SPEND_CATS.forEach(c => sv('ms-'+c.key,'')); sv('ms-total',''); closeM('m-month');
   });
-  window.dMonth = month => { months = months.filter(m => m.month !== month); LS.s('fp_months',months); renderSpending(); renderOverview(); };
+  window.dMonth = async month => { months = months.filter(m => m.month !== month); await save(); renderSpending(); renderOverview(); };
 
   // Money Map
   el('btn-edit-mm-income')?.addEventListener('click', () => {
     sv('ic-salary', mmIncome.salary); sv('ic-autosave', mmIncome.autosave); sv('ic-autoinvest', mmIncome.autoinvest); openM('m-mm-income');
   });
-  el('sv-mm-income')?.addEventListener('click', () => {
+  el('sv-mm-income')?.addEventListener('click', async () => {
     mmIncome = { salary:+v('ic-salary')||0, autosave:+v('ic-autosave')||0, autoinvest:+v('ic-autoinvest')||0 };
-    LS.s('mm_income', mmIncome); renderMoneyMap(); renderOverview(); closeM('m-mm-income');
+    await save(); renderMoneyMap(); renderOverview(); closeM('m-mm-income');
   });
   el('btn-add-bank')?.addEventListener('click', () => {
     selColor = '#10b981'; selType = 'savings';
@@ -172,20 +292,20 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('.type-pill[data-type="savings"]')?.classList.add('sel');
     openM('m-bank');
   });
-  el('sv-bank')?.addEventListener('click', () => {
+  el('sv-bank')?.addEventListener('click', async () => {
     const name = v('bk-name'); if (!name) return;
     banks.push({ id:Date.now(), name, nick:v('bk-nick'), type:selType, amount:+v('bk-amount')||0, purpose:v('bk-purpose'), color:selColor, notes:v('bk-notes') });
-    LS.s('mm_banks', banks); renderMoneyMap(); renderOverview();
+    await save(); renderMoneyMap(); renderOverview();
     ['bk-name','bk-nick','bk-amount','bk-purpose','bk-notes'].forEach(id => sv(id,'')); closeM('m-bank');
   });
-  el('sv-edit-bank')?.addEventListener('click', () => {
+  el('sv-edit-bank')?.addEventListener('click', async () => {
     if (editBankIdx === null) return;
     banks[editBankIdx].amount = +v('eb-amount')||0;
     if (v('eb-notes')) banks[editBankIdx].notes = v('eb-notes');
-    LS.s('mm_banks', banks); renderMoneyMap(); renderOverview(); closeM('m-edit-bank'); editBankIdx = null;
+    await save(); renderMoneyMap(); renderOverview(); closeM('m-edit-bank'); editBankIdx = null;
   });
   window.editBank = i => { editBankIdx = i; sv('eb-amount', banks[i].amount); sv('eb-notes', banks[i].notes||''); openM('m-edit-bank'); };
-  window.dBank = i => { banks.splice(i,1); LS.s('mm_banks',banks); renderMoneyMap(); renderOverview(); };
+  window.dBank = async i => { banks.splice(i,1); await save(); renderMoneyMap(); renderOverview(); };
 
   // Principles
   el('btn-add-principle')?.addEventListener('click', () => {
@@ -194,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ['pr-title','pr-body','pr-tag'].forEach(id => sv(id,''));
     openM('m-principle');
   });
-  el('sv-principle')?.addEventListener('click', () => {
+  el('sv-principle')?.addEventListener('click', async () => {
     const title = v('pr-title'); if (!title) return;
     if (editPrincipleId) {
       const p = principles.find(x => x.id === editPrincipleId);
@@ -202,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       principles.push({ id:Date.now(), title, body:v('pr-body'), tag:v('pr-tag') });
     }
-    LS.s('fp_principles', principles); renderPrinciples();
+    await save(); renderPrinciples();
     ['pr-title','pr-body','pr-tag'].forEach(id => sv(id,'')); editPrincipleId = null; closeM('m-principle');
   });
   window.editPrinciple = id => {
@@ -212,7 +332,7 @@ document.addEventListener('DOMContentLoaded', () => {
     sv('pr-title', p.title); sv('pr-body', p.body||''); sv('pr-tag', p.tag||'');
     openM('m-principle');
   };
-  window.dPrinciple = id => { principles = principles.filter(x => x.id !== id); LS.s('fp_principles',principles); renderPrinciples(); };
+  window.dPrinciple = async id => { principles = principles.filter(x => x.id !== id); await save(); renderPrinciples(); };
 
   renderOverview(); renderBudget(); renderInvestments();
   renderSpending(); renderMoneyMap(); renderPrinciples();
@@ -239,7 +359,6 @@ function renderOverview() {
   const rate = income > 0 ? pct(saveTarget, income) : 0;
   const totalBudgeted = budget.reduce((s,b) => s+b.amount, 0);
   const remaining = income - totalBudgeted - saveTarget;
-
   el('kpi-overview').innerHTML = `
     <div class="kpi"><div class="kpi-lbl">Monthly Income</div><div class="kpi-val g-text">${fmt(income)}</div><div class="kpi-sub">from Money Map</div></div>
     <div class="kpi"><div class="kpi-lbl">Total Savings</div><div class="kpi-val">${fmt(savings)}</div><div class="kpi-sub">from accounts</div></div>
@@ -248,21 +367,16 @@ function renderOverview() {
   `;
   el('savings-rate-card').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div>
-        <div style="font-family:var(--font-d);font-size:15px;font-weight:700">Savings Rate</div>
-        <div style="font-size:11px;color:var(--t3);margin-top:1px">Target ${fmt(saveTarget)} / month</div>
-      </div>
+      <div><div style="font-family:var(--font-d);font-size:15px;font-weight:700">Savings Rate</div>
+      <div style="font-size:11px;color:var(--t3);margin-top:1px">Target ${fmt(saveTarget)} / month</div></div>
       <div style="font-family:var(--font-d);font-size:30px;font-weight:800" class="g-text">${rate}%</div>
     </div>
     <div class="pbar-bg"><div class="pbar" style="width:${Math.min(rate,100)}%"></div></div>
     <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3);margin-top:8px">
-      <span>Budgeted: ${fmt(totalBudgeted)}</span>
-      <span>Saved: ${fmt(saveTarget)}</span>
+      <span>Budgeted: ${fmt(totalBudgeted)}</span><span>Saved: ${fmt(saveTarget)}</span>
       <span style="color:${remaining>=0?'var(--green)':'var(--red)'}">${remaining>=0?'Unallocated':'Over'}: ${fmt(Math.abs(remaining))}</span>
     </div>
-    <div style="font-size:11px;color:var(--t3);margin-top:10px;font-style:italic">
-      Savings &amp; invested totals auto-update from your Money Map accounts
-    </div>
+    <div style="font-size:11px;color:var(--t3);margin-top:10px;font-style:italic">Savings &amp; invested totals auto-update from your Money Map accounts</div>
   `;
   const sorted = [...months].sort((a,b) => b.month.localeCompare(a.month));
   const latest = sorted[0] || null;
@@ -279,11 +393,10 @@ function renderOverview() {
       ${topCats.map(c => {
         const diff = prev ? latest[c.key] - (prev[c.key]||0) : null;
         return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
-          <span style="font-size:14px">${c.icon}</span>
           <span style="font-size:12px;color:var(--t2);flex:1">${c.label}</span>
           <div style="text-align:right">
             <div style="font-family:var(--font-d);font-size:12px;font-weight:700">${fmt(latest[c.key])}</div>
-            ${diff!==null&&diff!==0?`<div style="font-size:10px;color:${diff>0?'var(--red)':'var(--green)'};font-weight:600">${diff>0?'^ up':'v down'} ${fmt(Math.abs(diff))}</div>`:''}
+            ${diff!==null&&diff!==0?`<div style="font-size:10px;color:${diff>0?'var(--red)':'var(--green)'};font-weight:600">${diff>0?'+':'-'} ${fmt(Math.abs(diff))}</div>`:''}
           </div>
         </div>`;
       }).join('')}
@@ -303,7 +416,7 @@ function renderBudget() {
         <span style="font-size:12px;font-weight:600;color:${remaining>=0?'var(--green)':'var(--red)'}">${remaining>=0?'Unallocated':'Over'}: ${fmt(Math.abs(remaining))}</span>
       </div>
       <div style="display:flex;height:10px;border-radius:20px;overflow:hidden;gap:1px">
-        ${budget.map(b=>`<div style="height:10px;background:${b.color};width:${pct(b.amount,inc)}%;min-width:${b.amount>0?2:0}px;transition:width .5s" title="${b.name}: ${fmt(b.amount)}"></div>`).join('')}
+        ${budget.map(b=>`<div style="height:10px;background:${b.color};width:${pct(b.amount,inc)}%;min-width:${b.amount>0?2:0}px" title="${b.name}: ${fmt(b.amount)}"></div>`).join('')}
         <div style="flex:1;background:#f0fdf4;min-width:0"></div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
@@ -329,26 +442,72 @@ function renderBudget() {
 // ── INVESTMENTS ───────────────────────────────────────────────────
 function renderInvestments() {
   const totalPct = investments.reduce((s,i) => s+i.pct, 0);
+
+  // Build category summary
+  const catSums = {};
+  investments.forEach(inv => {
+    const cat = inv.cat || 'Other';
+    catSums[cat] = (catSums[cat] || 0) + inv.pct;
+  });
+
   el('inv-summary').innerHTML = `
     <div class="kpi-grid" style="margin-bottom:1.2rem">
       <div class="kpi"><div class="kpi-lbl">Monthly Amount</div><div class="kpi-val g-text">${fmt(invMonthly)}</div></div>
       <div class="kpi"><div class="kpi-lbl">Funds / ETFs</div><div class="kpi-val">${investments.length}</div></div>
-      <div class="kpi"><div class="kpi-lbl">Allocated</div><div class="kpi-val" style="color:${totalPct>100?'var(--red)':totalPct===100?'var(--green)':'var(--amber)'}">${totalPct}%</div><div class="kpi-sub">${totalPct===100?'OK - Perfect':'Target: 100%'}</div></div>
-    </div>`;
+      <div class="kpi"><div class="kpi-lbl">Allocated</div><div class="kpi-val" style="color:${totalPct>100?'var(--red)':totalPct===100?'var(--green)':'var(--amber)'}">${totalPct}%</div><div class="kpi-sub">${totalPct===100?'Perfect':'Target: 100%'}</div></div>
+    </div>
+    ${Object.keys(catSums).length > 0 ? `
+    <div class="glass" style="padding:1.1rem;margin-bottom:1.2rem">
+      <div style="font-family:var(--font-d);font-size:13px;font-weight:700;margin-bottom:12px">Portfolio by Asset Class</div>
+      <div style="display:flex;height:10px;border-radius:20px;overflow:hidden;gap:1px;margin-bottom:10px">
+        ${Object.entries(catSums).map(([cat,p])=>`<div style="height:10px;background:${(INV_CATEGORIES[cat]||INV_CATEGORIES['Other']).color};width:${p}%;min-width:2px;transition:width .5s" title="${cat}: ${p}%"></div>`).join('')}
+        ${totalPct<100?`<div style="flex:1;background:#f0fdf4"></div>`:''}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${Object.entries(catSums).map(([cat,p])=>{
+          const catDef = INV_CATEGORIES[cat] || INV_CATEGORIES['Other'];
+          return `<div style="position:relative;display:inline-block">
+            <div class="inv-cat-pill" style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--t2);cursor:help;padding:3px 8px;border-radius:20px;background:${catDef.color}15;border:1px solid ${catDef.color}30" title="${catDef.desc}">
+              <div style="width:8px;height:8px;border-radius:50%;background:${catDef.color};flex-shrink:0"></div>
+              <strong>${cat}</strong>: ${p}%
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}`;
+
   const barWrap = el('alloc-bar-wrap');
   if (!investments.length) { barWrap.innerHTML = '<div class="empty">Add ETFs to see allocation</div>'; el('inv-grid').innerHTML = ''; return; }
   barWrap.innerHTML = `
-    <div class="alloc-bar">${investments.map(inv=>`<div class="alloc-seg" style="width:${inv.pct}%;background:${inv.color}" title="${inv.name}: ${inv.pct}%"></div>`).join('')}${totalPct<100?`<div class="alloc-seg" style="width:${100-totalPct}%;background:#f0fdf4"></div>`:''}</div>
-    <div class="alloc-legend" style="margin-top:.5rem">${investments.map(inv=>`<div class="alloc-leg"><div class="alloc-dot" style="background:${inv.color}"></div>${inv.ticker||inv.name}: ${inv.pct}%</div>`).join('')}</div>`;
+    <div class="alloc-bar">${investments.map(inv=>{
+      const c = inv.cat ? (INV_CATEGORIES[inv.cat]||INV_CATEGORIES['Other']).color : inv.color;
+      return `<div class="alloc-seg" style="width:${inv.pct}%;background:${c}" title="${inv.ticker||inv.name}: ${inv.pct}%"></div>`;
+    }).join('')}${totalPct<100?`<div class="alloc-seg" style="width:${100-totalPct}%;background:#f0fdf4"></div>`:''}</div>
+    <div class="alloc-legend" style="margin-top:.5rem">${investments.map(inv=>{
+      const c = inv.cat ? (INV_CATEGORIES[inv.cat]||INV_CATEGORIES['Other']).color : inv.color;
+      return `<div class="alloc-leg"><div class="alloc-dot" style="background:${c}"></div>${inv.ticker||inv.name}: ${inv.pct}%</div>`;
+    }).join('')}</div>`;
+
   el('inv-grid').innerHTML = investments.map((inv,i) => {
     const monthly = invMonthly * inv.pct / 100;
+    const catDef = inv.cat ? (INV_CATEGORIES[inv.cat]||INV_CATEGORIES['Other']) : null;
+    const c = catDef ? catDef.color : inv.color;
+    const learnText = FUND_LEARN[inv.ticker] || FUND_LEARN[inv.name] || '';
     return `<div class="glass inv-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-        <div><div style="font-size:13px;font-weight:700;color:var(--t)">${inv.name}</div><div style="font-size:11px;color:var(--t3)">${inv.ticker||'-'}</div></div>
-        <div style="font-family:var(--font-d);font-size:20px;font-weight:800;color:${inv.color}">${inv.pct}%</div>
+        <div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:700;color:var(--t);position:relative;cursor:help" title="${learnText||inv.name}">${inv.name}</span>
+            ${learnText?`<span style="font-size:9px;background:rgba(16,185,129,.12);color:#065f46;padding:1px 6px;border-radius:10px;font-weight:600">hover for info</span>`:''}
+          </div>
+          <div style="font-size:11px;color:var(--t3);margin-top:1px">${inv.ticker||'-'}</div>
+          ${catDef?`<div style="margin-top:4px"><span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:${catDef.color}15;color:${catDef.color}">${inv.cat}</span></div>`:''}
+        </div>
+        <div style="font-family:var(--font-d);font-size:20px;font-weight:800;color:${c}">${inv.pct}%</div>
       </div>
+      ${learnText?`<div style="font-size:11px;color:var(--t2);background:#f0fdf4;border:1px solid #d1fae5;border-radius:8px;padding:.5rem .75rem;margin-bottom:8px;line-height:1.5">${learnText}</div>`:''}
       <div style="display:flex;align-items:center;gap:8px">
-        <div style="flex:1;background:#f0fdf4;border-radius:20px;height:5px;overflow:hidden"><div style="height:5px;border-radius:20px;background:${inv.color};width:${Math.min(inv.pct,100)}%"></div></div>
+        <div style="flex:1;background:#f0fdf4;border-radius:20px;height:5px;overflow:hidden"><div style="height:5px;border-radius:20px;background:${c};width:${Math.min(inv.pct,100)}%"></div></div>
         <span style="font-size:11px;color:var(--t3);white-space:nowrap">${fmt(monthly)}/mo</span>
       </div>
       ${inv.note?`<div style="font-size:11px;color:var(--t2);margin-top:8px;line-height:1.5">${inv.note}</div>`:''}
@@ -368,7 +527,7 @@ function renderSpending() {
       <div style="font-family:var(--font-d);font-size:13px;font-weight:700;margin-bottom:12px">6-Month Trend</div>
       <div style="display:flex;align-items:flex-end;gap:6px;height:80px">
         ${last6.map(m=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
-          <div style="width:100%;background:linear-gradient(180deg,#10b981,#3b82f6);border-radius:6px 6px 0 0;height:${Math.round(m.total/maxTotal*64)}px;min-height:4px;transition:height .4s" title="${fmt(m.total)}"></div>
+          <div style="width:100%;background:linear-gradient(180deg,#10b981,#3b82f6);border-radius:6px 6px 0 0;height:${Math.round(m.total/maxTotal*64)}px;min-height:4px" title="${fmt(m.total)}"></div>
           <div style="font-size:9px;color:var(--t3);text-align:center">${fM(m.month).split(' ')[0].slice(0,3)}</div>
         </div>`).join('')}
       </div>
@@ -386,7 +545,7 @@ function renderSpending() {
         <div style="display:flex;align-items:center;gap:10px">
           <div style="text-align:right">
             <div style="font-family:var(--font-d);font-size:15px;font-weight:800" class="g-text">${fmt(m.total)}</div>
-            ${totalDiff!==null?`<div style="font-size:10px;font-weight:600;color:${totalDiff>0?'var(--red)':'var(--green)'}">${totalDiff>0?'up':'down'} ${fmt(Math.abs(totalDiff))} vs prev</div>`:''}
+            ${totalDiff!==null?`<div style="font-size:10px;font-weight:600;color:${totalDiff>0?'var(--red)':'var(--green)'}">${totalDiff>0?'+':'-'} ${fmt(Math.abs(totalDiff))} vs prev</div>`:''}
           </div>
           <button class="btn btn-d" onclick="dMonth('${m.month}')">Delete</button>
         </div>
@@ -395,7 +554,6 @@ function renderSpending() {
         ${cats.map(c => {
           const diff = prev ? m[c.key] - (prev[c.key]||0) : null;
           return `<div class="cat-row">
-            <span style="font-size:15px">${c.icon}</span>
             <span style="font-size:12px;color:var(--t2);flex:1">${c.label}</span>
             <div style="text-align:right">
               <div style="font-family:var(--font-d);font-size:12px;font-weight:700">${fmt(m[c.key])}</div>
@@ -409,13 +567,9 @@ function renderSpending() {
 }
 
 // ── MONEY MAP ─────────────────────────────────────────────────────
-function renderMoneyMap() {
-  renderMMKPIs(); renderIncomeFlow(); renderBanks(); renderPie(); renderAllocSummary();
-}
+function renderMoneyMap() { renderMMKPIs(); renderIncomeFlow(); renderBanks(); renderPie(); renderAllocSummary(); }
 function renderMMKPIs() {
-  const savings = totalSavingsFromBanks();
-  const invested = totalInvestedFromBanks();
-  const total = totalWealthFromBanks();
+  const savings = totalSavingsFromBanks(), invested = totalInvestedFromBanks(), total = totalWealthFromBanks();
   const spending = Math.max(mmIncome.salary - mmIncome.autosave - mmIncome.autoinvest, 0);
   el('mm-kpi-grid').innerHTML = `
     <div class="kpi"><div class="kpi-lbl">Total Wealth</div><div class="kpi-val g-text">${fmt(total)}</div><div class="kpi-sub">all accounts</div></div>
@@ -431,13 +585,13 @@ function renderIncomeFlow() {
   const wrap = el('income-flow');
   if (!salary) { wrap.innerHTML = '<div class="empty">Click "Edit Income" to set up your monthly salary flow</div>'; return; }
   const rows = [
-    { icon:'[save]', label:'Savings - auto-transfer on payday', amt:autosave, color:'#10b981' },
-    { icon:'[inv]',  label:'Investments - auto-invest on payday', amt:autoinvest, color:'#3b82f6' },
-    { icon:'[spend]',label:'Monthly spending budget', amt:spending, color:'#f59e0b' }
+    { label:'Savings - auto-transfer on payday', amt:autosave, color:'#10b981' },
+    { label:'Investments - auto-invest on payday', amt:autoinvest, color:'#3b82f6' },
+    { label:'Monthly spending budget', amt:spending, color:'#f59e0b' }
   ];
   wrap.innerHTML = `<div style="font-family:var(--font-d);font-size:13px;font-weight:700;margin-bottom:14px">Every month, the second your salary lands</div>
     ${rows.map(r=>`<div class="flow-row">
-      <div class="flow-icon" style="background:${r.color}18">${r.icon}</div>
+      <div class="flow-icon" style="background:${r.color}18;width:34px;height:34px;border-radius:10px;flex-shrink:0"></div>
       <div style="flex:1"><div style="font-size:12px;font-weight:500;color:var(--t2)">${r.label}</div><div class="flow-bar"><div class="flow-bar-fill" style="background:${r.color};width:${pct(r.amt,salary)}%"></div></div></div>
       <div style="text-align:right;flex-shrink:0"><div style="font-family:var(--font-d);font-size:14px;font-weight:700;color:${r.color}">${fmt(r.amt)}</div><div style="font-size:10px;color:var(--t3)">${pct(r.amt,salary)}%</div></div>
     </div>`).join('')}
@@ -452,8 +606,7 @@ function renderBanks() {
   const wrap = el('bank-list');
   if (!filtered.length) { wrap.innerHTML = '<div class="empty">No accounts yet - click "+ Add Account"</div>'; return; }
   wrap.innerHTML = filtered.map(b => {
-    const ri = banks.indexOf(b);
-    const p = pct(b.amount, total);
+    const ri = banks.indexOf(b), p = pct(b.amount, total);
     const init = b.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
     return `<div class="glass bank-card">
       <div class="bank-init" style="background:${b.color}">${init}</div>
@@ -481,18 +634,18 @@ function renderPie() {
   const canvas = el('pie-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const W=200, H=200, cx=W/2, cy=H/2, R=88, RI=56;
+  const W=200,H=200,cx=W/2,cy=H/2,R=88,RI=56;
   ctx.clearRect(0,0,W,H);
   const segments = banks.filter(b => b.amount > 0).map(b => ({ label:b.nick||b.name, amount:b.amount, color:b.color }));
-  if (!segments.length || total===0) {
+  if (!segments.length||total===0) {
     ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fillStyle='#f0fdf4'; ctx.fill();
     ctx.beginPath(); ctx.arc(cx,cy,RI,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.95)'; ctx.fill();
     el('pie-legend').innerHTML = '<div style="font-size:12px;color:#a7f3d0;font-style:italic">Add accounts to see your wealth map</div>';
     return;
   }
-  let startAngle = -Math.PI / 2;
+  let startAngle = -Math.PI/2;
   segments.forEach(seg => {
-    const sliceAngle = seg.amount / total * Math.PI * 2;
+    const sliceAngle = seg.amount/total*Math.PI*2;
     ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,R,startAngle,startAngle+sliceAngle); ctx.closePath();
     ctx.fillStyle = seg.color; ctx.fill();
     startAngle += sliceAngle;
@@ -520,9 +673,7 @@ function renderAllocSummary() {
 // ── PRINCIPLES ────────────────────────────────────────────────────
 function renderPrinciples() {
   const wrap = el('principles-list');
-  if (!principles.length) {
-    wrap.innerHTML = '<div class="empty">No principles yet - add your first investment rule or philosophy</div>'; return;
-  }
+  if (!principles.length) { wrap.innerHTML = '<div class="empty">No principles yet - add your first investment rule or philosophy</div>'; return; }
   wrap.innerHTML = principles.map(p => `
     <div class="glass" style="padding:1.1rem;margin-bottom:.65rem">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
