@@ -31,6 +31,7 @@ async function loadFromFirebase() {
       allocClasses= d.allocClasses|| JSON.parse(JSON.stringify(DEFAULT_CLASSES));
       allocTotal  = d.allocTotal  || 1000000;
       library     = d.library     || migrateOldInvestments(d.investments||[]);
+      if(d.allocCashPct!==undefined){ allocCashPct=d.allocCashPct; allocInvPct=d.allocInvPct; allocLiquidPct=d.allocLiquidPct; allocFixedPct=d.allocFixedPct; }
     } else {
       await migrateFromLS();
     }
@@ -361,9 +362,15 @@ function renderPie(){
   const ctx=canvas.getContext('2d');
   const W=200,H=200,cx=W/2,cy=H/2,R=88,RI=56;
   ctx.clearRect(0,0,W,H);
-  const typeMap={};
-  banks.filter(b=>b.amount>0).forEach(b=>{const label=TYPE_LABELS[b.type]||b.type;const color=TYPE_COLORS[b.type]||b.color;if(!typeMap[label])typeMap[label]={amount:0,color};typeMap[label].amount+=b.amount;});
-  const segments=Object.entries(typeMap).map(([label,v])=>({label,amount:v.amount,color:v.color})).sort((a,b)=>b.amount-a.amount);
+  // Group into 3 buckets: Liquid Cash / Fixed Deposits / Investment
+  const liquidAmt  = banks.filter(b=>['checking','savings'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
+  const fixedAmt   = banks.filter(b=>b.type==='fixed').reduce((s,b)=>s+b.amount,0);
+  const investAmt  = banks.filter(b=>['fixedincome','investment','alternatives','gold','hedges'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
+  const segments = [
+    {label:'Liquid Cash',    amount:liquidAmt,  color:'#3b82f6'},
+    {label:'Fixed Deposits', amount:fixedAmt,   color:'#06b6d4'},
+    {label:'Investment',     amount:investAmt,  color:'#10b981'},
+  ].filter(s=>s.amount>0);
   if(!segments.length||total===0){ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.fillStyle='#f0fdf4';ctx.fill();ctx.beginPath();ctx.arc(cx,cy,RI,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,.95)';ctx.fill();el('pie-legend').innerHTML='<div style="font-size:12px;color:#a7f3d0;font-style:italic">Add accounts to see your wealth map</div>';return;}
   let startAngle=-Math.PI/2;
   segments.forEach(seg=>{const sliceAngle=seg.amount/total*Math.PI*2;ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,R,startAngle,startAngle+sliceAngle);ctx.closePath();ctx.fillStyle=seg.color;ctx.fill();startAngle+=sliceAngle;});
@@ -373,43 +380,147 @@ function renderPie(){
 
 function renderAllocSummary(){
   const total=totalWealthFromBanks(); if(!banks.length){el('alloc-summary').innerHTML='';return;}
-  const cashTypes=['fixed','checking','savings'];
-  const invTypes=['fixedincome','investment','alternatives','gold','hedges'];
-  const cashAmt=banks.filter(b=>cashTypes.includes(b.type)).reduce((s,b)=>s+b.amount,0);
-  const invAmt=banks.filter(b=>invTypes.includes(b.type)).reduce((s,b)=>s+b.amount,0);
-  const cashGroups=[{label:'Fixed Deposit',types:['fixed'],color:'#06b6d4'},{label:'Liquidity / Cash',types:['checking','savings'],color:'#3b82f6'}].map(g=>({...g,amount:banks.filter(b=>g.types.includes(b.type)).reduce((s,b)=>s+b.amount,0)})).filter(g=>g.amount>0);
+  const liquidAmt = banks.filter(b=>['checking','savings'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
+  const fixedAmt  = banks.filter(b=>b.type==='fixed').reduce((s,b)=>s+b.amount,0);
+  const invAmt    = banks.filter(b=>['fixedincome','investment','alternatives','gold','hedges'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
+  const cashAmt   = liquidAmt + fixedAmt;
+  // Investment sub-breakdown
   const invGroups=[{label:'Fixed Income',types:['fixedincome'],color:'#3b82f6'},{label:'Equities',types:['investment'],color:'#10b981'},{label:'Alternatives',types:['alternatives'],color:'#8b5cf6'},{label:'Gold',types:['gold'],color:'#f97316'}].map(g=>({...g,amount:banks.filter(b=>g.types.includes(b.type)).reduce((s,b)=>s+b.amount,0)})).filter(g=>g.amount>0);
-  const mkSection=(title,amt,color,groups)=>!amt?'':`<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${color}">${title}</span><span style="font-family:var(--font-d);font-size:15px;font-weight:700;color:${color}">${fmt(amt)} <span style="font-size:11px;color:var(--t3)">${pct(amt,total)}%</span></span></div>${groups.map(g=>`<div style="display:flex;justify-content:space-between;align-items:center;padding-left:10px;margin-bottom:3px"><span style="font-size:12px;color:var(--t2)">${g.label}</span><span style="font-size:12px;font-weight:600;color:${g.color}">${fmt(g.amount)} - ${pct(g.amount,total)}%</span></div><div class="pbar-bg" style="margin:0 0 6px 10px"><div class="pbar" style="width:${pct(g.amount,total)}%;background:${g.color}"></div></div>`).join('')}</div>`;
-  el('alloc-summary').innerHTML=`<div class="glass" style="padding:1.1rem">${mkSection('CASH',cashAmt,'#3b82f6',cashGroups)}${mkSection('INVESTMENT',invAmt,'#10b981',invGroups)}</div>`;
+  const row=(label,amt,color)=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="font-size:12px;color:var(--t2)">${label}</span>
+      <span style="font-size:12px;font-weight:600;color:${color}">${fmt(amt)} &nbsp; ${pct(amt,total)}%</span>
+    </div>
+    <div class="pbar-bg" style="margin-bottom:8px"><div class="pbar" style="width:${pct(amt,total)}%;background:${color}"></div></div>`;
+  el('alloc-summary').innerHTML=`<div class="glass" style="padding:1.1rem">
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#3b82f6">CASH &nbsp;${pct(cashAmt,total)}%</span>
+        <span style="font-family:var(--font-d);font-size:15px;font-weight:700;color:#3b82f6">${fmt(cashAmt)}</span>
+      </div>
+      ${liquidAmt>0?row('Liquid Cash',liquidAmt,'#3b82f6'):''}
+      ${fixedAmt>0?row('Fixed Deposits',fixedAmt,'#06b6d4'):''}
+    </div>
+    ${invAmt>0?`<div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#10b981">INVESTMENT &nbsp;${pct(invAmt,total)}%</span>
+        <span style="font-family:var(--font-d);font-size:15px;font-weight:700;color:#10b981">${fmt(invAmt)}</span>
+      </div>
+      ${invGroups.map(g=>row(g.label,g.amount,g.color)).join('')}
+    </div>`:''}
+  </div>`;
 }
 
 // ══════════════════════════════════════════════════════
 // INVESTMENT ALLOCATION PLANNER
 // ══════════════════════════════════════════════════════
+let allocCashPct = 35;   // user-set: % of total wealth in cash
+let allocInvPct  = 65;   // user-set: % of total wealth in investment
+let allocLiquidPct = 15; // % of total in liquid cash (sub of cash)
+let allocFixedPct  = 20; // % of total in fixed deposits (sub of cash)
+
+window.onAllocCashChange = async (field, val) => {
+  const n = Math.min(100, Math.max(0, parseInt(val)||0));
+  if(field==='liquid') allocLiquidPct = n;
+  if(field==='fixed')  allocFixedPct  = n;
+  allocCashPct  = allocLiquidPct + allocFixedPct;
+  allocInvPct   = Math.max(0, 100 - allocCashPct);
+  await save(); renderAllocPlanner();
+};
+
 function renderAllocPlanner(){
   if(!allocBuilt){
-    // On first render, seed total from Money Map if available
     const mapTotal=totalWealthFromBanks();
     if(mapTotal>0&&allocTotal===1000000) allocTotal=mapTotal;
+    // Try to seed from actual Money Map
+    if(mapTotal>0){
+      const liquidAmt=banks.filter(b=>['checking','savings'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
+      const fixedAmt =banks.filter(b=>b.type==='fixed').reduce((s,b)=>s+b.amount,0);
+      allocLiquidPct = Math.round(liquidAmt/mapTotal*100);
+      allocFixedPct  = Math.round(fixedAmt/mapTotal*100);
+      allocCashPct   = allocLiquidPct+allocFixedPct;
+      allocInvPct    = Math.max(0,100-allocCashPct);
+    }
     allocBuilt=true;
   }
   const twEl=el('alloc-total-input'); if(twEl&&!twEl.value) twEl.value=allocTotal;
   const total=allocTotal||0;
   const classSum=allocClasses.reduce((s,c)=>s+c.pct,0);
 
-  // Summary KPIs
+  // ── Cash vs Investment top section ──
+  const cashSec=el('alloc-cash-inv-section');
+  if(cashSec){
+    const cashAmt   = total*allocCashPct/100;
+    const liqAmt    = total*allocLiquidPct/100;
+    const fixedAmt  = total*allocFixedPct/100;
+    const invAmt    = total*allocInvPct/100;
+    const topSum    = allocCashPct+allocInvPct;
+    cashSec.innerHTML=`
+      <div style="margin-bottom:10px">
+        <div style="display:flex;height:12px;border-radius:20px;overflow:hidden;gap:1px;margin-bottom:8px">
+          ${allocLiquidPct>0?`<div style="height:12px;background:#3b82f6;width:${allocLiquidPct}%;min-width:2px;transition:width .3s" title="Liquid Cash: ${allocLiquidPct}%"></div>`:''}
+          ${allocFixedPct>0?`<div style="height:12px;background:#06b6d4;width:${allocFixedPct}%;min-width:2px;transition:width .3s" title="Fixed Deposits: ${allocFixedPct}%"></div>`:''}
+          ${allocInvPct>0?`<div style="height:12px;background:#10b981;width:${allocInvPct}%;min-width:2px;transition:width .3s" title="Investment: ${allocInvPct}%"></div>`:''}
+          ${topSum<100?`<div style="flex:1;background:#f0fdf4;min-width:0" title="Unallocated: ${100-topSum}%"></div>`:''}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+          <span style="font-size:11px;color:var(--t2);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:#3b82f6;display:inline-block"></span>Liquid Cash ${allocLiquidPct}%</span>
+          <span style="font-size:11px;color:var(--t2);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:#06b6d4;display:inline-block"></span>Fixed Deposits ${allocFixedPct}%</span>
+          <span style="font-size:11px;color:var(--t2);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block"></span>Investment ${allocInvPct}%</span>
+          ${topSum!==100?`<span style="font-size:11px;font-weight:600;color:${topSum>100?'var(--red)':'var(--amber)'}">${topSum>100?'Over by '+(topSum-100)+'%':(100-topSum)+'% unallocated'}</span>`:`<span style="font-size:11px;font-weight:600;color:var(--green)">100% - balanced</span>`}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="glass" style="padding:1rem;border-left:4px solid #3b82f6">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#3b82f6;margin-bottom:8px">CASH &nbsp; ${allocCashPct}% &nbsp; = &nbsp; ${fmt(cashAmt)}</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                <span style="font-size:12px;color:var(--t2)">a/ Liquid Cash</span>
+                <span style="font-size:12px;font-weight:600;color:#3b82f6">${fmt(liqAmt)}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input type="number" min="0" max="100" step="1" value="${allocLiquidPct}"
+                  style="width:56px;padding:5px 7px;border:1.5px solid #3b82f640;border-radius:8px;font-family:var(--font-d);font-size:14px;font-weight:700;color:#3b82f6;text-align:center;background:#f0fdf4"
+                  oninput="onAllocCashChange('liquid',this.value)">
+                <span style="font-size:11px;color:var(--t3)">% of total wealth</span>
+              </div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                <span style="font-size:12px;color:var(--t2)">b/ Fixed Deposits</span>
+                <span style="font-size:12px;font-weight:600;color:#06b6d4">${fmt(fixedAmt)}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input type="number" min="0" max="100" step="1" value="${allocFixedPct}"
+                  style="width:56px;padding:5px 7px;border:1.5px solid #06b6d440;border-radius:8px;font-family:var(--font-d);font-size:14px;font-weight:700;color:#06b6d4;text-align:center;background:#f0fdf4"
+                  oninput="onAllocCashChange('fixed',this.value)">
+                <span style="font-size:11px;color:var(--t3)">% of total wealth</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="glass" style="padding:1rem;border-left:4px solid #10b981">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#10b981;margin-bottom:8px">INVESTMENT &nbsp; ${allocInvPct}% &nbsp; = &nbsp; ${fmt(invAmt)}</div>
+          <div style="font-size:12px;color:var(--t3);line-height:1.6">Auto-calculated as 100% minus your cash allocation. &nbsp; <strong style="color:#10b981">${allocInvPct}%</strong> goes into the 4 asset classes below.</div>
+          <div style="margin-top:10px;font-size:11px;color:var(--t3)">Monthly investment: <strong style="color:#10b981">${fmt(invMonthly)}</strong></div>
+        </div>
+      </div>`;
+  }
+
+  // Summary KPIs (asset classes)
   el('alloc-plan-stats').innerHTML=`
-    <div class="kpi"><div class="kpi-lbl">Allocated</div><div class="kpi-val" style="color:${classSum===100?'var(--green)':classSum>100?'var(--red)':'var(--amber)'}">${classSum}%</div></div>
+    <div class="kpi"><div class="kpi-lbl">Investment allocated</div><div class="kpi-val" style="color:${classSum===100?'var(--green)':classSum>100?'var(--red)':'var(--amber)'}">${classSum}%</div><div class="kpi-sub">of investment sleeve</div></div>
     <div class="kpi"><div class="kpi-lbl">Monthly Amount</div><div class="kpi-val g-text">${fmt(invMonthly)}</div></div>
-    ${allocClasses.map(c=>`<div class="kpi"><div class="kpi-lbl" style="color:${c.color}">${c.label}</div><div class="kpi-val" style="color:${c.color}">${c.pct}%</div><div class="kpi-sub">${fmt(total*c.pct/100)}</div></div>`).join('')}
+    ${allocClasses.map(c=>`<div class="kpi"><div class="kpi-lbl" style="color:${c.color}">${c.label}</div><div class="kpi-val" style="color:${c.color}">${c.pct}%</div><div class="kpi-sub">${fmt(total*allocInvPct/100*c.pct/100)}</div></div>`).join('')}
   `;
 
   // Balance message
   const msgEl=el('alloc-plan-msg');
   if(msgEl){
-    if(classSum===100) msgEl.innerHTML=`<div style="font-size:12px;font-weight:600;color:var(--green)">Portfolio perfectly balanced at 100%</div>`;
-    else if(classSum>100) msgEl.innerHTML=`<div style="font-size:12px;font-weight:600;color:var(--red)">Over-allocated by ${classSum-100}%</div>`;
-    else msgEl.innerHTML=`<div style="font-size:12px;font-weight:600;color:var(--amber)">${100-classSum}% unallocated</div>`;
+    if(classSum===100) msgEl.innerHTML=`<div style="font-size:12px;font-weight:600;color:var(--green)">Investment sleeve perfectly balanced at 100%</div>`;
+    else if(classSum>100) msgEl.innerHTML=`<div style="font-size:12px;font-weight:600;color:var(--red)">Investment sleeve over-allocated by ${classSum-100}%</div>`;
+    else msgEl.innerHTML=`<div style="font-size:12px;font-weight:600;color:var(--amber)">${100-classSum}% of investment sleeve unallocated</div>`;
   }
 
   // Two visualization bars
