@@ -277,16 +277,7 @@ function renderOverview(){
 // ══════════════════════════════════════════════════════
 function renderMoneyMap(){renderIncomeFlow();renderBanks();renderPie();renderAllocSummary();}
 
-function renderMMKPIs(){
-  const savings=totalSavingsFromBanks(),invested=totalInvestedFromBanks(),total=totalWealthFromBanks();
-  const spending=Math.max(mmIncome.salary-mmIncome.autosave-mmIncome.autoinvest,0);
-  el('mm-kpi-grid').innerHTML=`
-    <div class="kpi"><div class="kpi-lbl">Total Wealth</div><div class="kpi-val g-text">${fmt(total)}</div><div class="kpi-sub">all accounts</div></div>
-    <div class="kpi"><div class="kpi-lbl">Cash & Savings</div><div class="kpi-val">${fmt(savings)}</div><div class="kpi-sub">${pct(savings,total)}% of total</div></div>
-    <div class="kpi"><div class="kpi-lbl">Invested</div><div class="kpi-val" style="color:var(--blue)">${fmt(invested)}</div><div class="kpi-sub">${pct(invested,total)}% of total</div></div>
-    <div class="kpi"><div class="kpi-lbl">Monthly Salary</div><div class="kpi-val" style="color:var(--green)">${fmt(mmIncome.salary)}</div></div>
-    <div class="kpi"><div class="kpi-lbl">Spending Budget</div><div class="kpi-val" style="color:var(--amber)">${fmt(spending)}</div><div class="kpi-sub">after savings &amp; invest</div></div>`;
-}
+function renderMMKPIs(){ /* removed — KPI bar hidden */ }
 
 function renderIncomeFlow(){
   const{salary,autosave,autoinvest}=mmIncome;
