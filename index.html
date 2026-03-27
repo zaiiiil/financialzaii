@@ -18,7 +18,6 @@
 <nav class="tabs">
   <button class="tab active" data-t="overview">Overview</button>
   <button class="tab" data-t="moneymap">Money Map</button>
-  <button class="tab" data-t="budget">Budget Plan</button>
   <button class="tab" data-t="spending">Monthly Spending</button>
   <button class="tab" data-t="alloc">Investment Allocation Planner</button>
   <button class="tab" data-t="library">Product Library</button>
@@ -78,20 +77,6 @@
     </div>
     <div class="divl"><span>Allocation Summary</span></div>
     <div id="alloc-summary"></div>
-  </div>
-
-  <!-- BUDGET PLAN -->
-  <div class="panel" id="p-budget">
-    <div class="ph">
-      <div><div class="ptitle">Budget Plan</div><div class="psub">Monthly income allocation</div></div>
-      <div class="pact">
-        <button class="btn btn-g" id="btn-set-income">Set Income</button>
-        <button class="btn btn-p" id="btn-add-budget">+ Category</button>
-      </div>
-    </div>
-    <div id="budget-income-bar"></div>
-    <div class="divl"><span>Categories</span></div>
-    <div class="budget-grid" id="budget-grid"></div>
   </div>
 
   <!-- INVESTMENT ALLOCATION PLANNER -->
@@ -241,38 +226,6 @@
   <div class="mfoot"><button class="btn btn-g" data-close="m-edit-bank">Cancel</button><button class="btn btn-p" id="sv-edit-bank">Update</button></div>
 </div>
 
-<!-- Set Budget Income -->
-<div class="modal" id="m-income">
-  <div class="mhdr"><h3>Monthly Income</h3><button class="mx" data-close="m-income">x</button></div>
-  <div class="mbody">
-    <div class="fld"><label>Monthly Income (฿)</label><input id="inc-val" type="number" placeholder="80000"></div>
-  </div>
-  <div class="mfoot"><button class="btn btn-g" data-close="m-income">Cancel</button><button class="btn btn-p" id="sv-income">Save</button></div>
-</div>
-
-<!-- Budget Category -->
-<div class="modal" id="m-budget">
-  <div class="mhdr"><h3>Budget Category</h3><button class="mx" data-close="m-budget">x</button></div>
-  <div class="mbody">
-    <div class="r2">
-      <div class="fld"><label>Category</label><input id="bc-name" placeholder="e.g. Food & Dining"></div>
-      <div class="fld"><label>Emoji</label><input id="bc-emoji" placeholder="e.g. food" maxlength="2" style="width:60px;font-size:18px"></div>
-    </div>
-    <div class="r2">
-      <div class="fld"><label>Monthly Budget (฿)</label><input id="bc-amount" type="number" placeholder="8000"></div>
-      <div class="fld"><label>Color</label>
-        <select id="bc-color">
-          <option value="#10b981">Green</option><option value="#3b82f6">Blue</option>
-          <option value="#8b5cf6">Purple</option><option value="#f59e0b">Amber</option>
-          <option value="#ec4899">Pink</option><option value="#ef4444">Red</option>
-          <option value="#06b6d4">Teal</option><option value="#84cc16">Lime</option>
-        </select>
-      </div>
-    </div>
-  </div>
-  <div class="mfoot"><button class="btn btn-g" data-close="m-budget">Cancel</button><button class="btn btn-p" id="sv-budget">Save</button></div>
-</div>
-
 <!-- Monthly Investment Amount -->
 <div class="modal" id="m-inv-budget">
   <div class="mhdr"><h3>Monthly Investment Amount</h3><button class="mx" data-close="m-inv-budget">x</button></div>
@@ -334,8 +287,11 @@
 <div class="modal" id="m-month">
   <div class="mhdr"><h3>Log Monthly Spending</h3><button class="mx" data-close="m-month">x</button></div>
   <div class="mbody">
-    <div class="fld"><label>Month</label><input id="ms-month" type="month"></div>
-    <p class="hint">Enter each category — total auto-calculates:</p>
+    <div class="r2">
+      <div class="fld"><label>Month</label><input id="ms-month" type="month"></div>
+      <div class="fld"><label>Income this month (฿)</label><input id="ms-income" type="number" placeholder="e.g. 80000"></div>
+    </div>
+    <p class="hint">Enter your spending by category — total and savings auto-calculate:</p>
     <div class="r2">
       <div class="fld"><label>Shopping & Clothes</label><input id="ms-shopping" type="number" placeholder="0" min="0"></div>
       <div class="fld"><label>Transport</label><input id="ms-transport" type="number" placeholder="0" min="0"></div>
