@@ -22,7 +22,6 @@ async function loadFromFirebase() {
     if (snap.exists()) {
       const d = snap.data();
       overview    = d.overview    || {income:0,saveTarget:0};
-      budget      = d.budget      || [];
       months      = d.months      || [];
       principles  = d.principles  || [];
       banks       = d.banks       || [];
@@ -64,7 +63,7 @@ async function migrateFromLS() {
 async function saveToFirebase() {
   try {
     await setDoc(doc(db,"portals",DOC_ID),{
-      overview,budget,months,principles,banks,mmIncome,
+      overview,months,principles,banks,mmIncome,
       invMonthly,allocClasses,allocTotal,library
     });
   } catch(e) {
@@ -79,7 +78,6 @@ const save = ()=>saveToFirebase();
 
 // ── STATE ─────────────────────────────────────────────────────────
 let overview    = {income:0,saveTarget:0};
-let budget      = [];
 let months      = [];
 let principles  = [];
 let banks       = [];
@@ -181,11 +179,6 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   el('sv-overview')?.addEventListener('click',async()=>{ overview={income:+v('ov-income'),saveTarget:+v('ov-save-target')}; await save(); renderOverview(); closeM('m-overview'); });
 
   // ── Budget ──
-  el('btn-set-income')?.addEventListener('click',()=>{ sv('inc-val',overview.income||mmIncome.salary); openM('m-income'); });
-  el('sv-income')?.addEventListener('click',async()=>{ overview.income=+v('inc-val'); await save(); renderOverview(); renderBudget(); closeM('m-income'); });
-  el('btn-add-budget')?.addEventListener('click',()=>openM('m-budget'));
-  el('sv-budget')?.addEventListener('click',async()=>{ const name=v('bc-name'); if(!name)return; budget.push({id:Date.now(),name,emoji:el('bc-emoji').value.trim()||'*',amount:+v('bc-amount')||0,color:el('bc-color').value}); await save(); renderBudget(); renderOverview(); ['bc-name','bc-amount'].forEach(id=>sv(id,'')); closeM('m-budget'); });
-  window.dBudget=async i=>{budget.splice(i,1);await save();renderBudget();renderOverview();};
 
   // ── Money Map ──
   el('btn-edit-mm-income')?.addEventListener('click',()=>{ sv('ic-salary',mmIncome.salary); sv('ic-autosave',mmIncome.autosave); sv('ic-autoinvest',mmIncome.autoinvest); openM('m-mm-income'); });
@@ -216,7 +209,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
 
   // ── Monthly Spending ──
   el('btn-add-month')?.addEventListener('click',()=>{ const now=new Date(); sv('ms-month',`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`); SPEND_CATS.forEach(c=>sv('ms-'+c.key,'')); sv('ms-total',''); openM('m-month'); });
-  el('sv-month')?.addEventListener('click',async()=>{ const month=v('ms-month'); if(!month)return; const entry={month}; SPEND_CATS.forEach(c=>{entry[c.key]=+(el('ms-'+c.key)?.value||0);}); entry.total=SPEND_CATS.reduce((s,c)=>s+entry[c.key],0); const ex=months.findIndex(m=>m.month===month); if(ex>=0)months[ex]=entry;else months.push(entry); await save(); renderSpending(); renderOverview(); SPEND_CATS.forEach(c=>sv('ms-'+c.key,'')); sv('ms-total',''); closeM('m-month'); });
+  el('sv-month')?.addEventListener('click',async()=>{ const month=v('ms-month'); if(!month)return; const entry={month,income:+(el('ms-income')?.value||0)}; SPEND_CATS.forEach(c=>{entry[c.key]=+(el('ms-'+c.key)?.value||0);}); entry.total=SPEND_CATS.reduce((s,c)=>s+entry[c.key],0); entry.saved=Math.max(0,entry.income-entry.total); const ex=months.findIndex(m=>m.month===month); if(ex>=0)months[ex]=entry;else months.push(entry); await save(); renderSpending(); renderOverview(); sv('ms-income',''); SPEND_CATS.forEach(c=>sv('ms-'+c.key,'')); sv('ms-total',''); closeM('m-month'); });
   window.dMonth=async month=>{months=months.filter(m=>m.month!==month);await save();renderSpending();renderOverview();};
 
   // ── Principles ──
@@ -233,7 +226,7 @@ function closeM(id){el('ov').classList.remove('open');el(id)?.classList.remove('
 function autoSumSpending(){const total=SPEND_CATS.reduce((s,c)=>s+(+(el('ms-'+c.key)?.value||0)),0);const t=el('ms-total');if(t)t.value=total||'';}
 
 function renderAll(){
-  renderOverview(); renderBudget(); renderSpending();
+  renderOverview(); renderSpending();
   renderMoneyMap(); renderAllocPlanner(); renderLibrary(); renderPrinciples();
 }
 
@@ -244,22 +237,26 @@ function renderOverview(){
   const income=overview.income||mmIncome.salary, saveTarget=overview.saveTarget;
   const savings=totalSavingsFromBanks(), invested=totalInvestedFromBanks(), total=totalWealthFromBanks();
   const rate=income>0?pct(saveTarget,income):0;
-  const totalBudgeted=budget.reduce((s,b)=>s+b.amount,0);
-  const remaining=income-totalBudgeted-saveTarget;
   el('kpi-overview').innerHTML=`
     <div class="kpi"><div class="kpi-lbl">Monthly Income</div><div class="kpi-val g-text">${fmt(income)}</div><div class="kpi-sub">from Money Map</div></div>
     <div class="kpi"><div class="kpi-lbl">Cash & Savings</div><div class="kpi-val">${fmt(savings)}</div><div class="kpi-sub">from accounts</div></div>
     <div class="kpi"><div class="kpi-lbl">Invested</div><div class="kpi-val" style="color:var(--blue)">${fmt(invested)}</div><div class="kpi-sub">from accounts</div></div>
     <div class="kpi"><div class="kpi-lbl">Net Worth</div><div class="kpi-val g-text">${fmt(total)}</div><div class="kpi-sub">all accounts</div></div>`;
+  const totalSaved=months.reduce((s,m)=>s+Math.max(0,(m.income||0)-m.total),0);
+  const totalInc=months.reduce((s,m)=>s+(m.income||0),0);
+  const overallRate=totalInc>0?pct(totalSaved,totalInc):0;
   el('savings-rate-card').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div><div style="font-family:var(--font-d);font-size:15px;font-weight:700">Savings Rate</div><div style="font-size:11px;color:var(--t3);margin-top:1px">Target ${fmt(saveTarget)} / month</div></div>
-      <div style="font-family:var(--font-d);font-size:30px;font-weight:800" class="g-text">${rate}%</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+      <div>
+        <div style="font-family:var(--font-d);font-size:15px;font-weight:700">Cumulative Savings from Salary</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:1px">${months.length} months tracked</div>
+      </div>
+      <div style="font-family:var(--font-d);font-size:30px;font-weight:800;color:#10b981">${fmt(totalSaved)}</div>
     </div>
-    <div class="pbar-bg"><div class="pbar" style="width:${Math.min(rate,100)}%"></div></div>
+    <div class="pbar-bg"><div class="pbar" style="width:${Math.min(overallRate,100)}%;background:#10b981"></div></div>
     <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3);margin-top:8px">
-      <span>Budgeted: ${fmt(totalBudgeted)}</span><span>Saved: ${fmt(saveTarget)}</span>
-      <span style="color:${remaining>=0?'var(--green)':'var(--red)'}">${remaining>=0?'Unallocated':'Over'}: ${fmt(Math.abs(remaining))}</span>
+      <span>Total income logged: ${fmt(totalInc)}</span>
+      <span style="color:#10b981;font-weight:600">Overall savings rate: ${overallRate}%</span>
     </div>`;
   const sorted=[...months].sort((a,b)=>b.month.localeCompare(a.month));
   const latest=sorted[0]||null, prev=sorted[1]||null;
@@ -646,18 +643,145 @@ function renderLibrary(){
 // ══════════════════════════════════════════════════════
 // MONTHLY SPENDING
 // ══════════════════════════════════════════════════════
+// Category colors for visual bars
+const CAT_COLORS_SPEND = {
+  shopping:'#ec4899', transport:'#3b82f6', health:'#10b981', entertainment:'#8b5cf6',
+  travel:'#f59e0b', rent:'#06b6d4', beauty:'#f97316', food:'#ef4444', subs:'#6366f1'
+};
+
 function renderSpending(){
   const sorted=[...months].sort((a,b)=>b.month.localeCompare(a.month));
   const last6=sorted.slice(0,6).reverse();
-  const maxTotal=Math.max(...last6.map(m=>m.total),1);
+
+  // Cumulative savings banner
+  const totalSavedAllTime = sorted.reduce((s,m)=>s+(m.saved||Math.max(0,(m.income||0)-m.total)),0);
+  const totalIncomeAllTime = sorted.reduce((s,m)=>s+(m.income||0),0);
   const trendEl=el('spending-trend');
-  if(last6.length>1){trendEl.innerHTML=`<div class="glass" style="padding:1.1rem;margin-bottom:1.2rem"><div style="font-family:var(--font-d);font-size:13px;font-weight:700;margin-bottom:12px">6-Month Trend</div><div style="display:flex;align-items:flex-end;gap:6px;height:80px">${last6.map(m=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:100%;background:linear-gradient(180deg,#10b981,#3b82f6);border-radius:6px 6px 0 0;height:${Math.round(m.total/maxTotal*64)}px;min-height:4px" title="${fmt(m.total)}"></div><div style="font-size:9px;color:var(--t3);text-align:center">${fM(m.month).split(' ')[0].slice(0,3)}</div></div>`).join('')}</div></div>`;
-  }else{trendEl.innerHTML='';}
+
+  let trendHTML = '';
+
+  // Cumulative savings card
+  if(sorted.length){
+    const avgSaved = sorted.length>0 ? Math.round(totalSavedAllTime/sorted.length) : 0;
+    trendHTML += `<div class="glass" style="padding:1.1rem;margin-bottom:1.2rem;background:linear-gradient(135deg,rgba(16,185,129,.06),rgba(59,130,246,.06))">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:4px">Total Saved from Salary</div>
+          <div style="font-family:var(--font-d);font-size:28px;font-weight:800;color:#10b981">${fmt(totalSavedAllTime)}</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:3px">across ${sorted.length} month${sorted.length!==1?'s':''} tracked &nbsp;·&nbsp; avg ${fmt(avgSaved)}/month saved</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:4px">Total Income tracked</div>
+          <div style="font-family:var(--font-d);font-size:20px;font-weight:700;color:var(--t)">${fmt(totalIncomeAllTime)}</div>
+          ${totalIncomeAllTime>0?`<div style="font-size:11px;color:var(--t3);margin-top:3px">Overall savings rate: <strong style="color:#10b981">${pct(totalSavedAllTime,totalIncomeAllTime)}%</strong></div>`:''}
+        </div>
+      </div>
+      ${totalIncomeAllTime>0?`<div style="margin-top:12px">
+        <div style="display:flex;height:8px;border-radius:20px;overflow:hidden;gap:1px">
+          <div style="background:#10b981;width:${pct(totalSavedAllTime,totalIncomeAllTime)}%;min-width:${totalSavedAllTime>0?3:0}px;transition:width .5s" title="Saved"></div>
+          <div style="background:#ef4444;flex:1;min-width:0" title="Spent"></div>
+        </div>
+        <div style="display:flex;gap:14px;margin-top:5px;font-size:10px;color:var(--t3)">
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;margin-right:3px"></span>Saved ${pct(totalSavedAllTime,totalIncomeAllTime)}%</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;margin-right:3px"></span>Spent ${100-pct(totalSavedAllTime,totalIncomeAllTime)}%</span>
+        </div>
+      </div>`:''}</div>`;
+  }
+
+  // 6-month trend bar chart
+  if(last6.length>1){
+    const maxVal=Math.max(...last6.map(m=>Math.max(m.total,m.income||0)),1);
+    trendHTML+=`<div class="glass" style="padding:1.1rem;margin-bottom:1.2rem">
+      <div style="font-family:var(--font-d);font-size:13px;font-weight:700;margin-bottom:14px">6-Month Spending vs Income</div>
+      <div style="display:flex;align-items:flex-end;gap:8px;height:90px">
+        ${last6.map(m=>{
+          const spendH=Math.round(m.total/maxVal*72);
+          const incH=m.income?Math.round(m.income/maxVal*72):0;
+          const saved=m.income?Math.max(0,m.income-m.total):0;
+          return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+            <div style="width:100%;display:flex;align-items:flex-end;gap:2px;height:72px">
+              ${incH?`<div style="flex:1;background:#10b981;opacity:.3;border-radius:4px 4px 0 0;height:${incH}px" title="Income: ${fmt(m.income)}"></div>`:''}
+              <div style="flex:1;background:linear-gradient(180deg,#ec4899,#3b82f6);border-radius:4px 4px 0 0;height:${Math.max(spendH,2)}px" title="Spent: ${fmt(m.total)}"></div>
+            </div>
+            <div style="font-size:9px;color:var(--t3);text-align:center">${fM(m.month).split(' ')[0].slice(0,3)}</div>
+            ${saved>0?`<div style="font-size:8px;color:#10b981;font-weight:700">+${fmt(saved)}</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:12px;margin-top:8px;font-size:10px;color:var(--t3)">
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#10b981;opacity:.4;margin-right:3px"></span>Income</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#ec4899;margin-right:3px"></span>Spending</span>
+      </div>
+    </div>`;
+  }
+
+  trendEl.innerHTML = trendHTML;
+
   const wrap=el('month-list');
-  if(!sorted.length){wrap.innerHTML='<div class="empty">No months logged yet</div>';return;}
+  if(!sorted.length){wrap.innerHTML='<div class="empty">No months logged yet — click "+ Log Month" to add your first month</div>';return;}
+
   wrap.innerHTML=sorted.map((m,idx)=>{
-    const prev=sorted[idx+1]||null, cats=SPEND_CATS.filter(c=>m[c.key]>0), totalDiff=prev?m.total-prev.total:null;
-    return`<div class="glass month-card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-family:var(--font-d);font-size:15px;font-weight:700">${fM(m.month)}</span><div style="display:flex;align-items:center;gap:10px"><div style="text-align:right"><div style="font-family:var(--font-d);font-size:15px;font-weight:800" class="g-text">${fmt(m.total)}</div>${totalDiff!==null?`<div style="font-size:10px;font-weight:600;color:${totalDiff>0?'var(--red)':'var(--green)'}">${totalDiff>0?'+':'-'} ${fmt(Math.abs(totalDiff))} vs prev</div>`:''}</div><button class="btn btn-d" onclick="dMonth('${m.month}')">Delete</button></div></div><div class="month-cats">${cats.map(c=>{const diff=prev?m[c.key]-(prev[c.key]||0):null;return`<div class="cat-row"><span style="font-size:12px;color:var(--t2);flex:1">${c.label}</span><div style="text-align:right"><div style="font-family:var(--font-d);font-size:12px;font-weight:700">${fmt(m[c.key])}</div>${diff!==null&&diff!==0?`<div style="font-size:10px;font-weight:600;color:${diff>0?'var(--red)':'var(--green)'}">${diff>0?'+':'-'} ${fmt(Math.abs(diff))}</div>`:''}</div></div>`;}).join('')}</div></div>`;
+    const prev=sorted[idx+1]||null;
+    const cats=SPEND_CATS.filter(c=>m[c.key]>0).sort((a,b)=>m[b.key]-m[a.key]);
+    const totalDiff=prev?m.total-prev.total:null;
+    const income=m.income||0;
+    const saved=income>0?Math.max(0,income-m.total):null;
+    const saveRate=income>0?pct(saved,income):null;
+
+    // Category visual bar
+    const catBarSegs=cats.map(c=>`<div style="height:6px;background:${CAT_COLORS_SPEND[c.key]||'#9ca3af'};width:${m.total>0?pct(m[c.key],m.total):0}%;min-width:2px;transition:width .3s" title="${c.label}: ${fmt(m[c.key])}"></div>`).join('');
+
+    return`<div class="glass month-card" style="padding:0;overflow:hidden">
+      <!-- Header -->
+      <div style="padding:1rem 1.1rem .75rem;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+        <div>
+          <div style="font-family:var(--font-d);font-size:16px;font-weight:700">${fM(m.month)}</div>
+          ${income>0?`<div style="font-size:11px;color:var(--t3);margin-top:2px">Income: <strong style="color:var(--t)">${fmt(income)}</strong></div>`:'<div style="font-size:11px;color:var(--amber)">No income logged for this month</div>'}
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="text-align:right">
+            <div style="font-family:var(--font-d);font-size:16px;font-weight:800" class="g-text">${fmt(m.total)}<span style="font-size:11px;font-weight:400;color:var(--t3);margin-left:4px">spent</span></div>
+            ${totalDiff!==null?`<div style="font-size:10px;font-weight:600;color:${totalDiff>0?'var(--red)':'var(--green)'}">${totalDiff>0?'+':'-'} ${fmt(Math.abs(totalDiff))} vs prev</div>`:''}
+          </div>
+          ${saved!==null?`<div style="text-align:right;padding-left:12px;border-left:1px solid #f0fdf4">
+            <div style="font-family:var(--font-d);font-size:16px;font-weight:800;color:#10b981">${fmt(saved)}<span style="font-size:11px;font-weight:400;color:var(--t3);margin-left:4px">saved</span></div>
+            <div style="font-size:10px;font-weight:600;color:#10b981">${saveRate}% savings rate</div>
+          </div>`:''}
+          <button class="btn btn-d" onclick="dMonth('${m.month}')" style="flex-shrink:0">Delete</button>
+        </div>
+      </div>
+
+      <!-- Category colour bar -->
+      <div style="display:flex;height:6px;overflow:hidden">${catBarSegs}</div>
+
+      <!-- Category breakdown -->
+      <div style="padding:.75rem 1.1rem 1rem">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;margin-bottom:8px">
+          ${cats.map(c=>{
+            const diff=prev?m[c.key]-(prev[c.key]||0):null;
+            const catPct=m.total>0?pct(m[c.key],m.total):0;
+            const cc=CAT_COLORS_SPEND[c.key]||'#9ca3af';
+            return`<div style="display:flex;align-items:center;gap:8px;padding:5px 0">
+              <div style="width:3px;height:28px;border-radius:2px;background:${cc};flex-shrink:0"></div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:11px;color:var(--t3);margin-bottom:1px">${c.label}</div>
+                <div style="font-family:var(--font-d);font-size:13px;font-weight:700">${fmt(m[c.key])} <span style="font-size:10px;color:var(--t3);font-weight:400">${catPct}%</span></div>
+                ${diff!==null&&diff!==0?`<div style="font-size:10px;font-weight:600;color:${diff>0?'var(--red)':'var(--green)'}">${diff>0?'+':'-'}${fmt(Math.abs(diff))}</div>`:''}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        ${income>0&&saved!==null?`
+        <div style="margin-top:6px">
+          <div style="display:flex;height:5px;border-radius:20px;overflow:hidden;gap:1px">
+            ${cats.map(c=>`<div style="background:${CAT_COLORS_SPEND[c.key]||'#9ca3af'};width:${pct(m[c.key],income)}%;min-width:${m[c.key]>0?1:0}px"></div>`).join('')}
+            <div style="background:#10b981;width:${saveRate}%;min-width:${saved>0?2:0}px" title="Saved"></div>
+            <div style="flex:1;background:#f0fdf4;min-width:0"></div>
+          </div>
+          <div style="font-size:10px;color:var(--t3);margin-top:4px">As % of income — green = saved</div>
+        </div>`:''}
+      </div>
+    </div>`;
   }).join('');
 }
 
@@ -668,15 +792,4 @@ function renderPrinciples(){
   const wrap=el('principles-list');
   if(!principles.length){wrap.innerHTML='<div class="empty">No principles yet</div>';return;}
   wrap.innerHTML=principles.map(p=>`<div class="glass" style="padding:1.1rem;margin-bottom:.65rem"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px"><div><div style="font-family:var(--font-d);font-size:15px;font-weight:700;color:var(--t);margin-bottom:4px">${p.title}</div>${p.tag?`<span style="display:inline-block;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:rgba(16,185,129,.12);color:#065f46">${p.tag}</span>`:''}</div><div style="display:flex;gap:5px;flex-shrink:0"><button class="btn btn-g btn-sm" onclick="editPrinciple(${p.id})">Edit</button><button class="btn btn-d btn-sm" onclick="dPrinciple(${p.id})">Delete</button></div></div>${p.body?`<div style="font-size:13px;color:var(--t2);line-height:1.7;white-space:pre-wrap;background:rgba(240,253,244,.5);border:1px solid #d1fae5;border-radius:10px;padding:.75rem 1rem;margin-top:8px">${p.body}</div>`:''}</div>`).join('');
-}
-
-// ══════════════════════════════════════════════════════
-// BUDGET
-// ══════════════════════════════════════════════════════
-function renderBudget(){
-  const inc=overview.income||mmIncome.salary, total=budget.reduce((s,b)=>s+b.amount,0), remaining=inc-total;
-  el('budget-income-bar').innerHTML=inc>0?`<div class="glass" style="padding:1.1rem;margin-bottom:1.2rem"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-family:var(--font-d);font-size:14px;font-weight:700">Monthly: ${fmt(inc)}</span><span style="font-size:12px;font-weight:600;color:${remaining>=0?'var(--green)':'var(--red)'}">${remaining>=0?'Unallocated':'Over'}: ${fmt(Math.abs(remaining))}</span></div><div style="display:flex;height:10px;border-radius:20px;overflow:hidden;gap:1px">${budget.map(b=>`<div style="height:10px;background:${b.color};width:${pct(b.amount,inc)}%;min-width:${b.amount>0?2:0}px" title="${b.name}: ${fmt(b.amount)}"></div>`).join('')}<div style="flex:1;background:#f0fdf4;min-width:0"></div></div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${budget.map(b=>`<div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--t2)"><div style="width:8px;height:8px;border-radius:50%;background:${b.color}"></div>${b.name}: ${fmt(b.amount)} (${pct(b.amount,inc)}%)</div>`).join('')}</div></div>`:'<div class="empty" style="margin-bottom:1.2rem">Set your monthly income first</div>';
-  const grid=el('budget-grid');
-  if(!budget.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1">No budget categories yet</div>';return;}
-  grid.innerHTML=budget.map((b,i)=>`<div class="glass budget-cat"><div class="bc-top"><div class="bc-name"><div class="bc-dot" style="background:${b.color}"></div>${b.emoji} ${b.name}</div><div style="text-align:right"><div style="font-family:var(--font-d);font-size:14px;font-weight:700;color:${b.color}">${fmt(b.amount)}</div><div style="font-size:10px;color:var(--t3)">${inc>0?pct(b.amount,inc):0}% of income</div></div></div><div class="pbar-bg"><div class="pbar" style="width:${inc>0?pct(b.amount,inc):0}%;background:${b.color}"></div></div><div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn btn-d" onclick="dBudget(${i})">Remove</button></div></div>`).join('');
 }
