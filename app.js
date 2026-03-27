@@ -211,6 +211,12 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   el('btn-add-month')?.addEventListener('click',()=>{ const now=new Date(); sv('ms-month',`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`); SPEND_CATS.forEach(c=>sv('ms-'+c.key,'')); sv('ms-total',''); openM('m-month'); });
   el('sv-month')?.addEventListener('click',async()=>{ const month=v('ms-month'); if(!month)return; const entry={month,income:+(el('ms-income')?.value||0)}; SPEND_CATS.forEach(c=>{entry[c.key]=+(el('ms-'+c.key)?.value||0);}); entry.total=SPEND_CATS.reduce((s,c)=>s+entry[c.key],0); entry.saved=Math.max(0,entry.income-entry.total); const ex=months.findIndex(m=>m.month===month); if(ex>=0)months[ex]=entry;else months.push(entry); await save(); renderSpending(); renderOverview(); sv('ms-income',''); SPEND_CATS.forEach(c=>sv('ms-'+c.key,'')); sv('ms-total',''); closeM('m-month'); });
   window.dMonth=async month=>{months=months.filter(m=>m.month!==month);await save();renderSpending();renderOverview();};
+  window.editMonth=month=>{
+    const m=months.find(x=>x.month===month); if(!m)return;
+    sv('ms-month',m.month); sv('ms-income',m.income||'');
+    SPEND_CATS.forEach(c=>sv('ms-'+c.key,m[c.key]||''));
+    autoSumSpending(); openM('m-month');
+  };
 
   // ── Principles ──
   el('btn-add-principle')?.addEventListener('click',()=>{ editPrincipleId=null; el('pr-modal-title').textContent='Add Principle'; ['pr-title','pr-body','pr-tag'].forEach(id=>sv(id,'')); openM('m-principle'); });
@@ -269,7 +275,7 @@ function renderOverview(){
 // ══════════════════════════════════════════════════════
 // MONEY MAP — TABLE FORMAT
 // ══════════════════════════════════════════════════════
-function renderMoneyMap(){renderMMKPIs();renderIncomeFlow();renderBanks();renderPie();renderAllocSummary();}
+function renderMoneyMap(){renderIncomeFlow();renderBanks();renderPie();renderAllocSummary();}
 
 function renderMMKPIs(){
   const savings=totalSavingsFromBanks(),invested=totalInvestedFromBanks(),total=totalWealthFromBanks();
@@ -747,7 +753,7 @@ function renderSpending(){
             <div style="font-family:var(--font-d);font-size:16px;font-weight:800;color:#10b981">${fmt(saved)}<span style="font-size:11px;font-weight:400;color:var(--t3);margin-left:4px">saved</span></div>
             <div style="font-size:10px;font-weight:600;color:#10b981">${saveRate}% savings rate</div>
           </div>`:''}
-          <button class="btn btn-d" onclick="dMonth('${m.month}')" style="flex-shrink:0">Delete</button>
+          <button class="btn btn-g btn-sm" onclick="editMonth('${m.month}')" style="flex-shrink:0">Edit</button><button class="btn btn-d" onclick="dMonth('${m.month}')" style="flex-shrink:0">Delete</button>
         </div>
       </div>
 
