@@ -160,7 +160,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
 
   // Grouped tab navigation
   document.querySelectorAll('.tab[data-t]').forEach(b => {
-    b.addEventListener('click', () => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
       const t = b.dataset.t; if(!t) return;
       // Close all dropdowns
       document.querySelectorAll('.tab-group').forEach(g=>g.classList.remove('open'));
@@ -1061,9 +1062,18 @@ window.toggleGroup = function(name) {
   const grp = document.getElementById('grp-'+name);
   if (!grp) return;
   const wasOpen = grp.classList.contains('open');
-  document.querySelectorAll('.tab-group').forEach(g=>g.classList.remove('open'));
+  // Close all groups first
+  document.querySelectorAll('.tab-group').forEach(g => g.classList.remove('open'));
+  // Re-open if it wasn't open
   if (!wasOpen) grp.classList.add('open');
 };
+
+// Close dropdowns when clicking anywhere outside a tab-group
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.tab-group')) {
+    document.querySelectorAll('.tab-group').forEach(g => g.classList.remove('open'));
+  }
+}, true);
 
 // ══════════════════════════════════════════════════════
 // TRANSFER SUMMARY
