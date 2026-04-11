@@ -1112,3 +1112,60 @@ window.copyTransfer = async id => {
     prompt('Copy this text:', text);
   }
 };
+
+// ── RENDER PLANS ─────────────────────────────────────────────────
+function renderPlans() {
+  const wrap = el('plans-list'); if(!wrap) return;
+  if(!plans.length){
+    wrap.innerHTML='<div class="empty">No allocation plans yet — create one to map out where you want your money to go</div>'; return;
+  }
+  const totalWealth = totalWealthFromBanks();
+  wrap.innerHTML = [...plans].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(p => {
+    const rowTotal = (p.rows||[]).reduce((s,r)=>s+r.amt,0);
+    const dateStr = p.date ? new Date(p.date+'T12:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'No date';
+    const barSegs = (p.rows||[]).filter(r=>r.amount>0&&totalWealth>0).map((r,i)=>{
+      const colors=['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ec4899','#06b6d4','#f97316'];
+      return `<div style="height:6px;background:${colors[i%colors.length]};width:${pct(r.amt,totalWealth)}%;min-width:2px" title="${r.account}: ${fmt(r.amt)}"></div>`;
+    }).join('');
+    const rowsHtml = (p.rows||[]).length ? `
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:10px">
+        <thead><tr style="border-bottom:1px solid #f0fdf4">
+          <th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3)">Account</th>
+          <th style="text-align:right;padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3)">Target</th>
+          <th style="text-align:right;padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3)">% of wealth</th>
+          <th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3)">Note</th>
+        </tr></thead>
+        <tbody>
+          ${(p.rows||[]).map(r=>`<tr style="border-bottom:1px solid #f9fafb">
+            <td style="padding:6px 8px;font-weight:500;color:var(--t)">${r.account||r.desc||''}</td>
+            <td style="padding:6px 8px;text-align:right;font-family:var(--font-d);font-weight:700;color:#10b981">${fmt(r.amt||r.amount||0)}</td>
+            <td style="padding:6px 8px;text-align:right;color:var(--t3)">${totalWealth>0?pct(r.amt||r.amount||0,totalWealth):'—'}%</td>
+            <td style="padding:6px 8px;color:var(--t3)">${r.note||r.purpose||'—'}</td>
+          </tr>`).join('')}
+          <tr style="border-top:2px solid #f0fdf4;background:rgba(16,185,129,.03)">
+            <td style="padding:6px 8px;font-weight:700;color:var(--t2)">Total planned</td>
+            <td style="padding:6px 8px;text-align:right;font-family:var(--font-d);font-weight:800;color:#10b981">${fmt(rowTotal)}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:600;color:#10b981">${totalWealth>0?pct(rowTotal,totalWealth):'—'}%</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>` : '<div style="font-size:12px;color:var(--t3);font-style:italic;margin-top:8px">No rows — edit to add targets</div>';
+
+    return `<div class="glass" style="padding:1.1rem;margin-bottom:.8rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+        <div>
+          <div style="font-family:var(--font-d);font-size:15px;font-weight:700;color:var(--t);margin-bottom:3px">${p.name}</div>
+          <div style="font-size:11px;color:var(--t3)">${dateStr}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+          <span style="font-size:12px;font-weight:600;color:#10b981">${fmt(rowTotal)} planned</span>
+          <button class="btn btn-g btn-sm" onclick="editPlan(${p.id})">Edit</button>
+          <button class="btn btn-d btn-sm" onclick="dPlan(${p.id})">Delete</button>
+        </div>
+      </div>
+      ${barSegs?`<div style="display:flex;height:6px;border-radius:20px;overflow:hidden;gap:1px;margin-bottom:8px">${barSegs}<div style="flex:1;background:#f0fdf4"></div></div>`:''}
+      ${p.notes?`<div style="font-size:12px;color:var(--t2);background:#f0fdf4;border-radius:8px;padding:.5rem .75rem;margin-bottom:8px;line-height:1.5;border:1px solid #d1fae5">${p.notes}</div>`:''}
+      ${rowsHtml}
+    </div>`;
+  }).join('');
+}
