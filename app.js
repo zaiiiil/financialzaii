@@ -955,19 +955,7 @@ let budgetData = {
 };
 let budgetNextId = 20;
 
-// Load/save budget data as part of Firebase
-// (add to existing save — patch the save call)
-const _origSave = saveToFirebase;
-
-// Override save to include budgetData
-async function saveToFirebase() {
-  try {
-    const { getFirestore: _gf, doc: _doc, setDoc: _set } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-    // We can't easily patch the original, so we save budgetData to localStorage as fallback
-    LS.s('fp_budget_planner', budgetData);
-  } catch(e) {}
-  return _origSave();
-}
+// Budget data saved to localStorage only (separate from Firebase)
 
 function loadBudgetData() {
   const saved = LS.g('fp_budget_planner');
