@@ -158,8 +158,25 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   await loadFromFirebase();
   document.querySelectorAll('.panel').forEach(p=>p.style.opacity='1');
 
-  // Tab navigation
+  // Prevent details dropdowns from closing before mousedown registers
+  document.querySelectorAll('.grp').forEach(details => {
+    details.addEventListener('toggle', () => {
+      // nothing — let native toggle work
+    });
+  });
+  // Keep details open while mouse is over the menu
+  document.querySelectorAll('.grp-menu').forEach(menu => {
+    menu.addEventListener('mouseenter', () => {
+      const details = menu.closest('.grp');
+      if(details) details.setAttribute('open','');
+    });
+  });
+
+  // Tab navigation — use mousedown so it fires before blur closes the details
   document.querySelectorAll('.tab[data-t]').forEach(b => {
+    b.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // prevents blur on details before we navigate
+    });
     b.addEventListener('click', () => {
       const t = b.dataset.t; if(!t) return;
       document.querySelectorAll('.tab[data-t]').forEach(x=>x.classList.remove('active'));
