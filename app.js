@@ -249,6 +249,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
 
   initBudgetListeners();
   initPlanListeners();
+  initTransferListeners();
   renderAll();
 });
 
@@ -1233,4 +1234,52 @@ function collectPlanRows() {
     const inputs = row.querySelectorAll('input');
     return { account:inputs[0]?.value||'', amt:+inputs[1]?.value||0, note:inputs[2]?.value||'' };
   }).filter(r => r.account);
+}
+
+// ── TRANSFER LISTENERS ───────────────────────────────────────────
+function initTransferListeners() {
+  let editTransferId = null;
+
+  el('btn-add-transfer')?.addEventListener('click', () => {
+    editTransferId = null;
+    el('m-transfer-title').textContent = 'New Transfer Summary';
+    ['tr-title','tr-person','tr-notes'].forEach(id=>sv(id,''));
+    el('tr-date').value = new Date().toISOString().split('T')[0];
+    buildTransferRows([{desc:'Gym membership',amt:1500},{desc:'Phone & Internet',amt:799}]);
+    openM('m-transfer');
+  });
+
+  el('sv-transfer')?.addEventListener('click', async () => {
+    const title = v('tr-title'); if(!title) return;
+    const rows = collectTransferRows();
+    const net = rows.reduce((s,r)=>s+r.amt,0);
+    const entry = { id:editTransferId||Date.now(), title, date:v('tr-date'), person:v('tr-person'), notes:v('tr-notes'), rows, net };
+    if(editTransferId){ const i=transfers.findIndex(x=>x.id===editTransferId); transfers[i]=entry; editTransferId=null; }
+    else { transfers.push(entry); }
+    await save(); renderTransfers(); closeM('m-transfer');
+  });
+
+  window.editTransfer = id => {
+    editTransferId = id;
+    const t = transfers.find(x=>x.id===id); if(!t) return;
+    el('m-transfer-title').textContent = 'Edit Transfer Summary';
+    sv('tr-title',t.title); sv('tr-person',t.person||''); sv('tr-notes',t.notes||'');
+    el('tr-date').value = t.date||'';
+    buildTransferRows(t.rows||[]);
+    openM('m-transfer');
+  };
+
+  window.dTransfer = async id => { transfers=transfers.filter(x=>x.id!==id); await save(); renderTransfers(); };
+
+  window.addTransferRow = () => {
+    const wrap = el('tr-rows'); if(!wrap) return;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 120px auto;gap:6px;margin-bottom:6px;align-items:center';
+    row.innerHTML = [
+      "<input placeholder='Description (e.g. Gym membership)' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;color:var(--t);background:transparent'>",
+      "<input type='number' placeholder='Amount (฿)' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;text-align:right;color:var(--t);background:transparent'>",
+      "<button onclick='this.parentElement.remove()' style='padding:4px 9px;border-radius:8px;border:1px solid #fecaca;background:#fff;color:#ef4444;cursor:pointer'>x</button>"
+    ].join('');
+    wrap.appendChild(row);
+  };
 }
