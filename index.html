@@ -21,6 +21,7 @@
   <button class="tab" data-t="spending">Monthly Spending</button>
   <button class="tab" data-t="alloc">Investment Allocation Planner</button>
   <button class="tab" data-t="library">Product Library</button>
+  <button class="tab" data-t="allocplans">Allocation Plans</button>
   <button class="tab" data-t="principles">Principles</button>
 </nav>
 
@@ -54,6 +55,7 @@
     <div class="fbar" id="bank-filter-bar">
       <button class="fc active" data-f="all">All</button>
       <button class="fc" data-f="fixed">Fixed Deposit</button>
+      <button class="fc" data-f="esavings">E-Savings</button>
       <button class="fc" data-f="checking">Liquidity / Cash</button>
       <button class="fc" data-f="fixedincome">Fixed Income</button>
       <button class="fc" data-f="investment">Equities</button>
@@ -135,6 +137,15 @@
     <div id="month-list"></div>
   </div>
 
+  <!-- ALLOCATION PLANS -->
+  <div class="panel" id="p-allocplans">
+    <div class="ph">
+      <div><div class="ptitle">Allocation Plans</div><div class="psub">Snapshot plans for how you want to distribute money across accounts — separate from actual status</div></div>
+      <button class="btn btn-p" id="btn-add-plan">+ New Plan</button>
+    </div>
+    <div id="plans-list"></div>
+  </div>
+
   <!-- PRINCIPLES -->
   <div class="panel" id="p-principles">
     <div class="ph">
@@ -182,6 +193,7 @@
     <div class="fld"><label>Account Type</label>
       <div class="type-pills" id="type-pills">
         <button class="type-pill sel" data-type="fixed">Fixed Deposit</button>
+        <button class="type-pill" data-type="esavings">E-Savings</button>
         <button class="type-pill" data-type="checking">Liquidity / Cash</button>
         <button class="type-pill" data-type="fixedincome">Fixed Income</button>
         <button class="type-pill" data-type="investment">Equities</button>
@@ -198,6 +210,10 @@
       <div class="fld"><label>Terms / Lock-up</label><input id="bk-terms" placeholder="e.g. 12 months, no lock"></div>
     </div>
     <div class="fld"><label>Notes</label><input id="bk-notes" placeholder="e.g. Broker: SETTRADE, Fund code"></div>
+    <div class="fld" style="display:flex;align-items:center;gap:10px;background:rgba(107,114,128,.06);border:1px solid #e5e7eb;border-radius:10px;padding:.6rem .9rem">
+      <input type="checkbox" id="bk-keepopen" style="width:16px;height:16px;accent-color:#9ca3af;flex-shrink:0">
+      <div><label for="bk-keepopen" style="font-size:13px;font-weight:600;color:var(--t);cursor:pointer">Keep open only (minimum balance, not actively used)</label><div style="font-size:11px;color:var(--t3);margin-top:1px">Will be greyed out in your account list</div></div>
+    </div>
     <div class="fld"><label>Bank Color</label>
       <div class="color-row" id="color-row">
         <div class="color-swatch sel" data-color="#10b981" style="background:#10b981"></div>
@@ -325,6 +341,23 @@
     <div class="fld"><label>Notes / Detail</label><textarea id="pr-body" style="min-height:120px" placeholder="Explain the principle, where you learned it, why it matters to you..."></textarea></div>
   </div>
   <div class="mfoot"><button class="btn btn-g" data-close="m-principle">Cancel</button><button class="btn btn-p" id="sv-principle">Save</button></div>
+</div>
+
+<!-- Allocation Plan modal -->
+<div class="modal" id="m-plan">
+  <div class="mhdr"><h3 id="m-plan-title">New Allocation Plan</h3><button class="mx" data-close="m-plan">x</button></div>
+  <div class="mbody">
+    <div class="r2">
+      <div class="fld"><label>Plan Name</label><input id="pl-name" placeholder="e.g. Target split for Q3 2026"></div>
+      <div class="fld"><label>Date</label><input id="pl-date" type="date"></div>
+    </div>
+    <div class="fld"><label>Notes / Context</label><textarea id="pl-notes" placeholder="What prompted this plan? What are you trying to achieve?"></textarea></div>
+    <div class="divl" style="margin:0 0 8px"><span>Account Targets</span></div>
+    <p class="hint" style="margin-bottom:8px">Add each account and your target balance or % for this plan.</p>
+    <div id="pl-rows"></div>
+    <button onclick="addPlanRow()" style="width:100%;padding:8px;border:1.5px dashed #d1fae5;border-radius:8px;background:transparent;font-size:12px;font-weight:600;color:#10b981;cursor:pointer;margin-top:6px">+ Add Account Row</button>
+  </div>
+  <div class="mfoot"><button class="btn btn-g" data-close="m-plan">Cancel</button><button class="btn btn-p" id="sv-plan">Save Plan</button></div>
 </div>
 
 <script type="module" src="app.js"></script>
