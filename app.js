@@ -31,6 +31,7 @@ async function loadFromFirebase() {
       allocTotal  = d.allocTotal  || 1000000;
       library     = d.library     || migrateOldInvestments(d.investments||[]);
       plans       = d.plans       || [];
+      transfers   = d.transfers   || [];
       if(d.allocCashPct!==undefined){ allocCashPct=d.allocCashPct; allocInvPct=d.allocInvPct; allocLiquidPct=d.allocLiquidPct; allocFixedPct=d.allocFixedPct; }
     } else {
       await migrateFromLS();
@@ -81,6 +82,7 @@ const save = ()=>saveToFirebase();
 // ── STATE ─────────────────────────────────────────────────────────
 let overview    = {income:0,saveTarget:0};
 let plans       = [];
+let transfers   = [];
 let months      = [];
 let principles  = [];
 let banks       = [];
@@ -156,13 +158,35 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   await loadFromFirebase();
   document.querySelectorAll('.panel').forEach(p=>p.style.opacity='1');
 
-  // Tabs
-  document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{
-    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active'); el('p-'+b.dataset.t)?.classList.add('active');
-    if(b.dataset.t==='alloc') renderAllocPlanner();
-  }));
+  // Grouped tab navigation
+  document.querySelectorAll('.tab[data-t]').forEach(b => {
+    b.addEventListener('click', () => {
+      const t = b.dataset.t; if(!t) return;
+      // Close all dropdowns
+      document.querySelectorAll('.tab-group').forEach(g=>g.classList.remove('open'));
+      // Deactivate all tabs and panels
+      document.querySelectorAll('.tab[data-t]').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+      // Activate this tab and panel
+      b.classList.add('active');
+      el('p-'+t)?.classList.add('active');
+      // Highlight parent group button if tab is inside a dropdown
+      document.querySelectorAll('.tab-group').forEach(g=>{
+        const hasActive = g.querySelector('.tab.active');
+        g.querySelector('.tab-group-btn')?.classList.toggle('group-active', !!hasActive);
+      });
+      // Render on demand
+      if(t==='alloc') renderAllocPlanner();
+      if(t==='budget') renderBudget();
+      if(t==='transfers') renderTransfers();
+    });
+  });
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', e => {
+    if(!e.target.closest('.tab-group')) {
+      document.querySelectorAll('.tab-group').forEach(g=>g.classList.remove('open'));
+    }
+  });
 
   // Overlay
   el('ov').addEventListener('click',()=>{ document.querySelectorAll('.modal.open').forEach(m=>m.classList.remove('open')); el('ov').classList.remove('open'); });
@@ -235,7 +259,7 @@ function closeM(id){el('ov').classList.remove('open');el(id)?.classList.remove('
 function autoSumSpending(){const total=SPEND_CATS.reduce((s,c)=>s+(+(el('ms-'+c.key)?.value||0)),0);const t=el('ms-total');if(t)t.value=total||'';}
 
 function renderAll(){
-  renderOverview(); renderSpending(); renderPlans();
+  renderOverview(); renderSpending(); renderPlans(); renderTransfers();
   initBudgetListeners();
 
   // Plans listeners
@@ -269,9 +293,46 @@ function renderAll(){
     const wrap = el('pl-rows'); if(!wrap) return;
     const row = document.createElement('div');
     row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center';
-    row.innerHTML = ["<input placeholder='Account / Bank' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px'>","<input placeholder='Target amount' type='number' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px'>","<input placeholder='Purpose' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px'>","<button onclick='this.parentElement.remove()' style='padding:4px 9px;border-radius:8px;border:1px solid #fecaca;background:#fff;color:#ef4444;cursor:pointer'>x</button>"].join('');
+    row.innerHTML = ["<input placeholder='Account' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px'>","<input placeholder='Target (฿)' type='number' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px'>","<input placeholder='Purpose' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px'>","<button onclick='this.parentElement.remove()' style='padding:4px 9px;border-radius:8px;border:1px solid #fecaca;background:#fff;color:#ef4444;cursor:pointer'>x</button>"].join('');
     wrap.appendChild(row);
   };
+
+  // Transfer listeners
+  el('btn-add-transfer')?.addEventListener('click', ()=>{
+    editTransferId = null;
+    el('m-transfer-title').textContent = 'New Transfer Summary';
+    ['tr-title','tr-person','tr-notes'].forEach(id=>sv(id,''));
+    el('tr-date').value = new Date().toISOString().split('T')[0];
+    buildTransferRows([{desc:'Gym membership',amt:1500},{desc:'Phone & Internet',amt:799}]);
+    openM('m-transfer');
+  });
+  el('sv-transfer')?.addEventListener('click', async ()=>{
+    const title = v('tr-title'); if(!title) return;
+    const rows = collectTransferRows();
+    const net = rows.reduce((s,r)=>s+r.amt,0);
+    const entry = { id:editTransferId||Date.now(), title, date:v('tr-date'), person:v('tr-person'), notes:v('tr-notes'), rows, net };
+    if(editTransferId){ const i=transfers.findIndex(x=>x.id===editTransferId); transfers[i]=entry; editTransferId=null; }
+    else { transfers.push(entry); }
+    await save(); renderTransfers(); closeM('m-transfer');
+  });
+  window.editTransfer = id => {
+    editTransferId = id;
+    const t = transfers.find(x=>x.id===id); if(!t) return;
+    el('m-transfer-title').textContent = 'Edit Transfer Summary';
+    sv('tr-title',t.title); sv('tr-person',t.person||''); sv('tr-notes',t.notes||'');
+    el('tr-date').value = t.date||'';
+    buildTransferRows(t.rows||[]);
+    openM('m-transfer');
+  };
+  window.dTransfer = async id => { transfers=transfers.filter(x=>x.id!==id); await save(); renderTransfers(); };
+  window.addTransferRow = () => {
+    const wrap = el('tr-rows'); if(!wrap) return;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 120px auto;gap:6px;margin-bottom:6px;align-items:center';
+    row.innerHTML = ["<input placeholder='Description (e.g. Gym membership)' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;color:var(--t);background:transparent'>","<input type='number' placeholder='Amount (฿)' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;text-align:right;color:var(--t);background:transparent'>","<button onclick='this.parentElement.remove()' style='padding:4px 9px;border-radius:8px;border:1px solid #fecaca;background:#fff;color:#ef4444;cursor:pointer'>x</button>"].join('');
+    wrap.appendChild(row);
+  };
+
   renderMoneyMap(); renderAllocPlanner(); renderLibrary(); renderPrinciples();
 }
 
@@ -994,3 +1055,141 @@ function renderBudget() {
   const eEl = el('budget-ess-section');   if(eEl) eEl.innerHTML = budgetRows(budgetData.essential,'essential');
   const dEl = el('budget-disc-section');  if(dEl) dEl.innerHTML = budgetRows(budgetData.disc,'disc');
 }
+
+// ── GROUP TAB TOGGLE ─────────────────────────────────────────────
+window.toggleGroup = function(name) {
+  const grp = document.getElementById('grp-'+name);
+  if (!grp) return;
+  const wasOpen = grp.classList.contains('open');
+  document.querySelectorAll('.tab-group').forEach(g=>g.classList.remove('open'));
+  if (!wasOpen) grp.classList.add('open');
+};
+
+// ══════════════════════════════════════════════════════
+// TRANSFER SUMMARY
+// ══════════════════════════════════════════════════════
+let editTransferId = null;
+;
+
+function buildTransferRows(rows) {
+  const wrap = el('tr-rows'); if(!wrap) return;
+  wrap.innerHTML = '';
+  rows.forEach(r => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 120px auto;gap:6px;margin-bottom:6px;align-items:center';
+    row.innerHTML = [
+      '<input value="'+(r.desc||'').replace(/"/g,'&quot;')+'" placeholder="Description" style="padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;color:var(--t);background:transparent;font-family:var(--font)">',
+      '<input type="number" value="'+(r.amt||'')+'" placeholder="Amount (฿)" style="padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;text-align:right;color:var(--t);background:transparent;font-family:var(--font)">',
+      '<button onclick="this.parentElement.remove()" style="padding:4px 9px;border-radius:8px;border:1px solid #fecaca;background:#fff;color:#ef4444;cursor:pointer">x</button>'
+    ].join('');
+    wrap.appendChild(row);
+  });
+}
+
+function collectTransferRows() {
+  const rows = [];
+  document.querySelectorAll('#tr-rows > div').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const desc = inputs[0]?.value.trim()||'';
+    const amt  = parseFloat(inputs[1]?.value)||0;
+    if(desc) rows.push({desc, amt});
+  });
+  return rows;
+}
+
+function renderTransfers() {
+  const wrap = el('transfers-list'); if(!wrap) return;
+  if(!transfers.length){
+    wrap.innerHTML = `<div class="empty">No transfer summaries yet — create one to track what you owe or are owed</div>
+      <div class="glass" style="padding:1.1rem;margin-top:1rem;background:rgba(16,185,129,.03);border:1px solid #d1fae5">
+        <div style="font-size:13px;font-weight:600;color:#065f46;margin-bottom:6px">How to use this</div>
+        <div style="font-size:12px;color:var(--t2);line-height:1.7">
+          Add items you need to pay someone (positive amounts) and things they owe you back (negative amounts).
+          The net total shows exactly what you need to transfer. Great for tracking monthly payments to parents for shared bills like gym, phone, groceries.
+        </div>
+      </div>`;
+    return;
+  }
+  wrap.innerHTML = [...transfers].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(t => {
+    const net = t.rows.reduce((s,r)=>s+r.amt,0);
+    const owes = net > 0;
+    const dateStr = t.date ? new Date(t.date+'T12:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '';
+
+    // Copy text for sharing
+    const copyText = [
+      `Transfer Summary — ${t.title}`,
+      dateStr ? `Date: ${dateStr}` : '',
+      t.person ? `To: ${t.person}` : '',
+      '',
+      ...t.rows.map(r => `  ${r.desc}: ${r.amt>=0?'+':''}${r.amt>=0?'\u0E3F'+Math.abs(r.amt).toLocaleString():'-\u0E3F'+Math.abs(r.amt).toLocaleString()}`),
+      '',
+      `NET TOTAL: ${owes?'You transfer':t.person+' transfers'} \u0E3F${Math.abs(Math.round(net)).toLocaleString()}`,
+      t.notes ? `Note: ${t.notes}` : ''
+    ].filter(Boolean).join('\n');
+
+    return `<div class="glass" style="padding:0;overflow:hidden;margin-bottom:.8rem">
+      <div style="padding:1rem 1.1rem .75rem;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-family:var(--font-d);font-size:15px;font-weight:700;color:var(--t)">${t.title}</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:2px">${dateStr}${t.person?' · To: '+t.person:''}</div>
+          ${t.notes?`<div style="font-size:11px;color:var(--t2);margin-top:2px;font-style:italic">${t.notes}</div>`:''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <div style="text-align:right">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:${owes?'#065f46':'#9ca3af'}">${owes?'You transfer':'They transfer'}</div>
+            <div style="font-family:var(--font-d);font-size:20px;font-weight:800;color:${owes?'#10b981':'#3b82f6'}">${fmt(Math.abs(net))}</div>
+          </div>
+          <button onclick="copyTransfer(${t.id})" title="Copy to clipboard" style="padding:6px 12px;border-radius:8px;border:1px solid #d1fae5;background:#f0fdf4;font-size:12px;font-weight:600;color:#065f46;cursor:pointer">Copy</button>
+          <button class="btn btn-g btn-sm" onclick="editTransfer(${t.id})">Edit</button>
+          <button class="btn btn-d btn-sm" onclick="dTransfer(${t.id})">x</button>
+        </div>
+      </div>
+
+      <div style="border-top:1px solid #f0fdf4">
+        ${t.rows.map((r,i) => {
+          const isNeg = r.amt < 0;
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 1.1rem;border-bottom:${i<t.rows.length-1?'1px solid #f9fafb':'none'}">
+            <span style="font-size:13px;color:var(--t2)">${r.desc}</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              ${isNeg?'<span style="font-size:10px;color:#3b82f6;font-weight:600">they owe you</span>':''}
+              <span style="font-family:var(--font-d);font-size:13px;font-weight:700;color:${isNeg?'#3b82f6':'var(--t)'}">${isNeg?'-':'+'}${fmt(Math.abs(r.amt))}</span>
+            </div>
+          </div>`;
+        }).join('')}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 1.1rem;background:${owes?'rgba(16,185,129,.04)':'rgba(59,130,246,.04)'}">
+          <span style="font-size:13px;font-weight:700;color:var(--t)">Net total</span>
+          <span style="font-family:var(--font-d);font-size:16px;font-weight:800;color:${owes?'#10b981':'#3b82f6'}">${owes?'':'- '}${fmt(Math.abs(net))}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Store copy texts
+  window._transferCopyTexts = {};
+  transfers.forEach(t => {
+    const net = t.rows.reduce((s,r)=>s+r.amt,0);
+    const owes = net > 0;
+    const dateStr = t.date ? new Date(t.date+'T12:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '';
+    window._transferCopyTexts[t.id] = [
+      `Transfer Summary — ${t.title}`,
+      dateStr ? `Date: ${dateStr}` : '',
+      t.person ? `To: ${t.person}` : '',
+      '',
+      ...t.rows.map(r => `  ${r.desc}: ${r.amt>=0?'+':''}\u0E3F${r.amt.toLocaleString()}`),
+      '',
+      `NET: ${owes?'I will transfer':'They will transfer'} \u0E3F${Math.abs(Math.round(net)).toLocaleString()}`,
+      t.notes ? `Note: ${t.notes}` : ''
+    ].filter(Boolean).join('\n');
+  });
+}
+
+window.copyTransfer = async id => {
+  const text = window._transferCopyTexts?.[id];
+  if(!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    alert('Copied to clipboard — paste it into LINE, WhatsApp, or any message app');
+  } catch(e) {
+    prompt('Copy this text:', text);
+  }
+};
