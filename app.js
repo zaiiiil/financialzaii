@@ -248,6 +248,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   window.dPrinciple=async id=>{principles=principles.filter(x=>x.id!==id);await save();renderPrinciples();};
 
   initBudgetListeners();
+  initPlanListeners();
   renderAll();
 });
 
@@ -1168,4 +1169,68 @@ function renderPlans() {
       ${rowsHtml}
     </div>`;
   }).join('');
+}
+
+// ── PLAN LISTENERS (wired on DOMContentLoaded via initPlanListeners) ──
+function initPlanListeners() {
+  el('btn-add-plan')?.addEventListener('click', () => {
+    editPlanId = null;
+    el('m-plan-title').textContent = 'New Allocation Plan';
+    sv('pl-name',''); sv('pl-notes','');
+    el('pl-date').value = new Date().toISOString().split('T')[0];
+    buildPlanRows([]);
+    openM('m-plan');
+  });
+
+  el('sv-plan')?.addEventListener('click', async () => {
+    const name = v('pl-name'); if(!name) return;
+    const rows = collectPlanRows();
+    const entry = { id:editPlanId||Date.now(), name, date:v('pl-date'), notes:v('pl-notes'), rows };
+    if(editPlanId){ const i=plans.findIndex(x=>x.id===editPlanId); plans[i]=entry; editPlanId=null; }
+    else { plans.push(entry); }
+    await save(); renderPlans(); closeM('m-plan');
+  });
+
+  window.editPlan = id => {
+    editPlanId = id;
+    const p = plans.find(x=>x.id===id); if(!p) return;
+    el('m-plan-title').textContent = 'Edit Plan';
+    sv('pl-name',p.name); sv('pl-notes',p.notes||'');
+    el('pl-date').value = p.date||'';
+    buildPlanRows(p.rows||[]);
+    openM('m-plan');
+  };
+
+  window.dPlan = async id => { plans=plans.filter(x=>x.id!==id); await save(); renderPlans(); };
+
+  window.addPlanRow = () => {
+    const wrap = el('pl-rows'); if(!wrap) return;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center';
+    row.innerHTML = ["<input placeholder='Account' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;color:var(--t);background:transparent'>","<input placeholder='Target (฿)' type='number' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;color:var(--t);background:transparent'>","<input placeholder='Purpose' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;color:var(--t);background:transparent'>","<button onclick='this.parentElement.remove()' style='padding:4px 9px;border-radius:8px;border:1px solid #fecaca;background:#fff;color:#ef4444;cursor:pointer'>x</button>"].join('');
+    wrap.appendChild(row);
+  };
+}
+
+function buildPlanRows(rows) {
+  const wrap = el('pl-rows'); if(!wrap) return;
+  wrap.innerHTML = '';
+  (rows.length ? rows : [{}]).forEach(r => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center';
+    row.innerHTML = [
+      "<input placeholder='Account' value='"+(r.account||r.desc||'').replace(/'/g,"&#39;")+"' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;color:var(--t);background:transparent'>",
+      "<input placeholder='Target (฿)' type='number' value='"+(r.amt||r.amount||'')+"' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;color:var(--t);background:transparent'>",
+      "<input placeholder='Purpose' value='"+(r.note||r.purpose||'').replace(/'/g,"&#39;")+"' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;color:var(--t);background:transparent'>",
+      "<button onclick='this.parentElement.remove()' style='padding:4px 9px;border-radius:8px;border:1px solid #fecaca;background:#fff;color:#ef4444;cursor:pointer'>x</button>"
+    ].join('');
+    wrap.appendChild(row);
+  });
+}
+
+function collectPlanRows() {
+  return [...(el('pl-rows')?.children||[])].map(row => {
+    const inputs = row.querySelectorAll('input');
+    return { account:inputs[0]?.value||'', amt:+inputs[1]?.value||0, note:inputs[2]?.value||'' };
+  }).filter(r => r.account);
 }
