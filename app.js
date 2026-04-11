@@ -182,12 +182,24 @@ document.addEventListener('DOMContentLoaded', async ()=>{
       if(t==='transfers') renderTransfers();
     });
   });
-  // Close dropdowns when clicking outside
-  document.addEventListener('click', e => {
-    if(!e.target.closest('.tab-group')) {
-      document.querySelectorAll('.tab-group').forEach(g=>g.classList.remove('open'));
-    }
+
+  // Group dropdown buttons
+  ['money','spending','invest'].forEach(name => {
+    const btn = el('grp-btn-'+name);
+    const grp = el('grp-'+name);
+    if(!btn||!grp) return;
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const wasOpen = grp.classList.contains('open');
+      document.querySelectorAll('.tab-group').forEach(g => g.classList.remove('open'));
+      if(!wasOpen) grp.classList.add('open');
+    });
   });
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.tab-group').forEach(g => g.classList.remove('open'));
+  });
+
 
   // Overlay
   el('ov').addEventListener('click',()=>{ document.querySelectorAll('.modal.open').forEach(m=>m.classList.remove('open')); el('ov').classList.remove('open'); });
@@ -1057,23 +1069,7 @@ function renderBudget() {
   const dEl = el('budget-disc-section');  if(dEl) dEl.innerHTML = budgetRows(budgetData.disc,'disc');
 }
 
-// ── GROUP TAB TOGGLE ─────────────────────────────────────────────
-window.toggleGroup = function(name) {
-  const grp = document.getElementById('grp-'+name);
-  if (!grp) return;
-  const wasOpen = grp.classList.contains('open');
-  // Close all groups first
-  document.querySelectorAll('.tab-group').forEach(g => g.classList.remove('open'));
-  // Re-open if it wasn't open
-  if (!wasOpen) grp.classList.add('open');
-};
-
-// Close dropdowns when clicking anywhere outside a tab-group
-document.addEventListener('click', function(e) {
-  if (!e.target.closest('.tab-group')) {
-    document.querySelectorAll('.tab-group').forEach(g => g.classList.remove('open'));
-  }
-}, true);
+// ── GROUP TAB TOGGLE — wired in DOMContentLoaded below ───────────
 
 // ══════════════════════════════════════════════════════
 // TRANSFER SUMMARY
