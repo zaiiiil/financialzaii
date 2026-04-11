@@ -42,14 +42,18 @@ html, body { font-family: var(--font); font-size: 14px; line-height: 1.6; backgr
 .tabs { background: rgba(255,255,255,.86); backdrop-filter: blur(20px); border-bottom: 1px solid var(--bd); display: flex; align-items: center; padding: 0 1.75rem; position: sticky; top: 58px; z-index: 40; overflow: visible; scrollbar-width: none; gap: 2px; }
 
 /* CSS-only grouped dropdowns */
-.grp { position: relative; display: flex; align-items: center; }
-.grp-label { cursor: pointer; white-space: nowrap; }
+/* details/summary dropdown groups */
+.grp { position: relative; display: inline-block; }
+.grp-label {
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+.grp-label::-webkit-details-marker { display: none; }
 .grp-menu {
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
+  display: none;
   position: absolute;
-  top: 100%;
+  top: calc(100% + 2px);
   left: 0;
   z-index: 9999;
   background: #fff;
@@ -58,13 +62,8 @@ html, body { font-family: var(--font); font-size: 14px; line-height: 1.6; backgr
   padding: 5px;
   min-width: 200px;
   box-shadow: 0 8px 24px rgba(0,0,0,.12);
-  transition: opacity .15s, visibility .15s;
 }
-.grp:focus-within .grp-menu {
-  visibility: visible;
-  opacity: 1;
-  pointer-events: auto;
-}
+.grp[open] .grp-menu { display: block; }
 .grp-item {
   display: block !important;
   width: 100%;
