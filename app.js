@@ -932,3 +932,172 @@ function renderPlans() {
     </div>`;
   }).join('');
 }
+
+// ══════════════════════════════════════════════════════
+// BUDGET PLANNER
+// ══════════════════════════════════════════════════════
+let budgetData = {
+  salaryOverride: 0,
+  savingsGoal: 15000,
+  fixed: [
+    { id:1, label:'Gym membership', amt:1500 },
+    { id:2, label:'Phone & Internet', amt:799 },
+  ],
+  essential: [
+    { id:1, label:'Transportation', amt:3000 },
+    { id:2, label:'Lunch at work', amt:3000 },
+  ],
+  disc: [
+    { id:1, label:'Shopping & Clothes', amt:2000 },
+    { id:2, label:'Eating out & Cafes', amt:3000 },
+    { id:3, label:'Beauty & Personal Care', amt:1500 },
+  ]
+};
+let budgetNextId = 20;
+
+// Load/save budget data as part of Firebase
+// (add to existing save — patch the save call)
+const _origSave = saveToFirebase;
+
+// Override save to include budgetData
+async function saveToFirebase() {
+  try {
+    const { getFirestore: _gf, doc: _doc, setDoc: _set } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
+    // We can't easily patch the original, so we save budgetData to localStorage as fallback
+    LS.s('fp_budget_planner', budgetData);
+  } catch(e) {}
+  return _origSave();
+}
+
+function loadBudgetData() {
+  const saved = LS.g('fp_budget_planner');
+  if (saved && saved.fixed) {
+    budgetData = saved;
+    budgetNextId = Math.max(budgetNextId, ...[...saved.fixed, ...saved.essential, ...saved.disc].map(x=>x.id+1), 20);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadBudgetData();
+
+  // Wire up tab click to render budget
+  document.querySelectorAll('.tab[data-t="budget"]').forEach(b => {
+    b.addEventListener('click', () => setTimeout(renderBudget, 50));
+  });
+});
+
+function saveBudgetLocal() {
+  LS.s('fp_budget_planner', budgetData);
+}
+
+function budgetSalary() {
+  return budgetData.salaryOverride || mmIncome.salary || 0;
+}
+
+window.budgetUpdateSalary = val => { budgetData.salaryOverride = +val||0; saveBudgetLocal(); renderBudget(); };
+window.budgetUpdateGoal  = val => { budgetData.savingsGoal = +val||0; saveBudgetLocal(); renderBudget(); };
+window.budgetUpdateAmt   = (type, id, val) => {
+  const arr = budgetData[type];
+  const item = arr.find(x=>x.id===id);
+  if(item) { item.amt = +val||0; saveBudgetLocal(); renderBudget(); }
+};
+window.budgetRename = (type, id, val) => {
+  const item = budgetData[type].find(x=>x.id===id);
+  if(item) { item.label = val; saveBudgetLocal(); }
+};
+window.budgetDelete = (type, id) => {
+  budgetData[type] = budgetData[type].filter(x=>x.id!==id);
+  saveBudgetLocal(); renderBudget();
+};
+window.budgetAdd = type => {
+  budgetData[type].push({ id:budgetNextId++, label:'New item', amt:0 });
+  saveBudgetLocal(); renderBudget();
+};
+
+function budgetRows(arr, type) {
+  const color = type==='fixed'?'#E24B4A':type==='essential'?'#BA7517':'#378ADD';
+  return arr.map(r => `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:0.5px solid #f5f5f5">
+      <input value="${(r.label||'').replace(/"/g,'&quot;')}" onchange="budgetRename('${type}',${r.id},this.value)"
+        style="flex:1;border:none;background:transparent;font-size:13px;color:var(--t);outline:none;font-family:var(--font);min-width:0">
+      <input type="number" value="${r.amt}" oninput="budgetUpdateAmt('${type}',${r.id},this.value)"
+        style="width:110px;padding:5px 9px;border:1px solid ${color}30;border-radius:8px;font-size:13px;font-weight:600;text-align:right;color:var(--t);background:transparent">
+      <button onclick="budgetDelete('${type}',${r.id})" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:16px;padding:0 2px;line-height:1;flex-shrink:0">x</button>
+    </div>`).join('')
+  + `<button onclick="budgetAdd('${type}')" style="width:100%;padding:7px;border:0.5px dashed #d1d5db;border-radius:8px;background:transparent;font-size:12px;font-weight:500;color:var(--t3);cursor:pointer;margin-top:8px">+ Add item</button>`;
+}
+
+function renderBudget() {
+  const salary = budgetSalary();
+  const goal = budgetData.savingsGoal;
+  const totalFixed = budgetData.fixed.reduce((s,x)=>s+x.amt,0);
+  const totalEss   = budgetData.essential.reduce((s,x)=>s+x.amt,0);
+  const totalDisc  = budgetData.disc.reduce((s,x)=>s+x.amt,0);
+  const spendable  = salary - goal;
+  const afterFixed = spendable - totalFixed;
+  const afterEss   = afterFixed - totalEss;
+  const remaining  = afterEss - totalDisc;
+
+  // Stats
+  const statsEl = el('budget-stats');
+  if (statsEl) statsEl.innerHTML = `
+    <div class="kpi"><div class="kpi-lbl">Take-home</div><div class="kpi-val g-text">${fmt(salary)}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Savings goal</div><div class="kpi-val" style="color:var(--green)">${fmt(goal)}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Fixed costs</div><div class="kpi-val" style="color:var(--red)">${fmt(totalFixed)}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Essentials est.</div><div class="kpi-val" style="color:var(--amber)">${fmt(totalEss)}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Discretionary</div><div class="kpi-val" style="color:var(--blue)">${fmt(totalDisc)}</div></div>
+    <div class="kpi" style="border:1.5px solid ${remaining>=0?'#d1fae5':'#fecaca'}">
+      <div class="kpi-lbl">${remaining>=0?'Unallocated':'Over budget'}</div>
+      <div class="kpi-val" style="color:${remaining>=0?'var(--green)':'var(--red)'}">${fmt(Math.abs(remaining))}</div>
+    </div>`;
+
+  // Bar
+  const segs = [
+    { label:'Savings', amt:goal,       color:'#1D9E75' },
+    { label:'Fixed',   amt:totalFixed, color:'#E24B4A' },
+    { label:'Essentials', amt:totalEss, color:'#BA7517' },
+    { label:'Discretionary', amt:totalDisc, color:'#378ADD' },
+  ].filter(s=>s.amt>0&&salary>0);
+  const pctOf = (a,b) => b>0?Math.round(a/b*100):0;
+  const barEl = el('budget-bar');
+  if (barEl && salary>0) {
+    barEl.innerHTML = `
+      <div style="display:flex;height:10px;border-radius:20px;overflow:hidden;gap:1px;margin-bottom:10px">
+        ${segs.map(s=>`<div style="height:10px;background:${s.color};width:${pctOf(s.amt,salary)}%;min-width:2px;transition:width .3s" title="${s.label}: ${fmt(s.amt)}"></div>`).join('')}
+        ${remaining>0?`<div style="flex:1;background:#f0fdf4;min-width:0"></div>`:''}
+        ${remaining<0?`<div style="width:${Math.min(pctOf(Math.abs(remaining),salary),20)}%;background:#fecaca;min-width:2px"></div>`:''}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+        ${segs.map(s=>`<span style="font-size:11px;color:var(--t2);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:${s.color};display:inline-block"></span>${s.label} ${pctOf(s.amt,salary)}%</span>`).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding-top:8px;border-top:1px solid #f0fdf4">
+        <div style="font-size:12px;color:var(--t2)">
+          Spendable after savings: <strong style="color:var(--t)">${fmt(spendable)}</strong>
+          &nbsp;·&nbsp; After fixed: <strong style="color:var(--t)">${fmt(afterFixed)}</strong>
+          &nbsp;·&nbsp; After essentials: <strong style="color:var(--t)">${fmt(afterEss)}</strong>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:${remaining>=0?'var(--green)':'var(--red)'}">
+          ${remaining>=0?`${fmt(remaining)} left unallocated`:`Over budget by ${fmt(Math.abs(remaining))}`}
+        </div>
+      </div>`;
+  }
+
+  // Income section
+  const incEl = el('budget-income-section');
+  if (incEl) incEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:0.5px solid #f5f5f5">
+      <span style="flex:1;font-size:13px;color:var(--t)">Monthly salary (take-home)</span>
+      <input type="number" value="${salary}" oninput="budgetUpdateSalary(this.value)"
+        style="width:110px;padding:5px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:13px;font-weight:600;text-align:right;color:var(--t);background:transparent">
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 0">
+      <div style="flex:1"><div style="font-size:13px;color:var(--t)">Savings goal</div><div style="font-size:11px;color:var(--t3)">Taken off the top — non-negotiable</div></div>
+      <input type="number" value="${goal}" oninput="budgetUpdateGoal(this.value)"
+        style="width:110px;padding:5px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:13px;font-weight:600;text-align:right;color:var(--green);background:transparent">
+    </div>`;
+
+  // Fixed/essential/disc sections
+  const fEl = el('budget-fixed-section'); if(fEl) fEl.innerHTML = budgetRows(budgetData.fixed,'fixed');
+  const eEl = el('budget-ess-section');   if(eEl) eEl.innerHTML = budgetRows(budgetData.essential,'essential');
+  const dEl = el('budget-disc-section');  if(dEl) dEl.innerHTML = budgetRows(budgetData.disc,'disc');
+}
