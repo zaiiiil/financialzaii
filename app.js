@@ -30,6 +30,7 @@ async function loadFromFirebase() {
       allocClasses= d.allocClasses|| JSON.parse(JSON.stringify(DEFAULT_CLASSES));
       allocTotal  = d.allocTotal  || 1000000;
       library     = d.library     || migrateOldInvestments(d.investments||[]);
+      plans       = d.plans       || [];
       if(d.allocCashPct!==undefined){ allocCashPct=d.allocCashPct; allocInvPct=d.allocInvPct; allocLiquidPct=d.allocLiquidPct; allocFixedPct=d.allocFixedPct; }
     } else {
       await migrateFromLS();
@@ -56,6 +57,7 @@ async function migrateFromLS() {
     mmIncome   = LS.g('mm_income')||{salary:0,autosave:0,autoinvest:0};
     invMonthly = LS.g('fp_inv_monthly')||0;
     library    = migrateOldInvestments(LS.gA('fp_investments'));
+    plans      = [];
     await save();
   }
 }
@@ -78,6 +80,7 @@ const save = ()=>saveToFirebase();
 
 // ── STATE ─────────────────────────────────────────────────────────
 let overview    = {income:0,saveTarget:0};
+let plans       = [];
 let months      = [];
 let principles  = [];
 let banks       = [];
@@ -110,8 +113,8 @@ const el   = id => document.getElementById(id);
 const fD   = s => { if(!s) return ''; return new Date(s+'T12:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
 const fM   = s => { if(!s) return ''; const [y,m]=s.split('-'); return new Date(y,m-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'}); };
 
-const TYPE_LABELS = {fixed:'Fixed Deposit',checking:'Liquidity / Cash',fixedincome:'Fixed Income',investment:'Equities',alternatives:'Alternatives',gold:'Gold',savings:'Savings (legacy)',hedges:'Hedges (legacy)'};
-const TYPE_COLORS = {fixed:'#06b6d4',checking:'#3b82f6',fixedincome:'#3b82f6',investment:'#10b981',alternatives:'#8b5cf6',gold:'#f97316',savings:'#10b981',hedges:'#f59e0b'};
+const TYPE_LABELS = {fixed:'Fixed Deposit',esavings:'E-Savings',checking:'Liquidity / Cash',fixedincome:'Fixed Income',investment:'Equities',alternatives:'Alternatives',gold:'Gold',savings:'Savings (legacy)',hedges:'Hedges (legacy)'};
+const TYPE_COLORS = {fixed:'#06b6d4',esavings:'#10b981',checking:'#3b82f6',fixedincome:'#3b82f6',investment:'#10b981',alternatives:'#8b5cf6',gold:'#f97316',savings:'#10b981',hedges:'#f59e0b'};
 
 const SPEND_CATS = [
   {key:'shopping',label:'Shopping & Clothes'},{key:'transport',label:'Transport'},
@@ -142,7 +145,7 @@ const PORTFOLIO_TEMPLATE = {
 };
 
 // ── DERIVED ───────────────────────────────────────────────────────
-const totalSavingsFromBanks  = ()=>banks.filter(b=>['savings','fixed','checking'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
+const totalSavingsFromBanks  = ()=>banks.filter(b=>['savings','fixed','checking','esavings'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
 const totalInvestedFromBanks = ()=>banks.filter(b=>['fixedincome','investment','alternatives','gold','hedges'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
 const totalWealthFromBanks   = ()=>banks.reduce((s,b)=>s+b.amount,0);
 
@@ -183,10 +186,10 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   // ── Money Map ──
   el('btn-edit-mm-income')?.addEventListener('click',()=>{ sv('ic-salary',mmIncome.salary); sv('ic-autosave',mmIncome.autosave); sv('ic-autoinvest',mmIncome.autoinvest); openM('m-mm-income'); });
   el('sv-mm-income')?.addEventListener('click',async()=>{ mmIncome={salary:+v('ic-salary')||0,autosave:+v('ic-autosave')||0,autoinvest:+v('ic-autoinvest')||0}; await save(); renderMoneyMap(); renderOverview(); closeM('m-mm-income'); });
-  el('btn-add-bank')?.addEventListener('click',()=>{ editBankIdx=null; selColor='#10b981'; selType='fixed'; document.querySelectorAll('.color-swatch').forEach(x=>x.classList.remove('sel')); document.querySelector('.color-swatch[data-color="#10b981"]')?.classList.add('sel'); document.querySelectorAll('.type-pill').forEach(x=>x.classList.remove('sel')); document.querySelector('.type-pill[data-type="fixed"]')?.classList.add('sel'); el('m-bank-title').textContent='Add Account'; el('sv-bank').textContent='Save'; ['bk-name','bk-nick','bk-amount','bk-return','bk-purpose','bk-terms','bk-notes'].forEach(id=>sv(id,'')); openM('m-bank'); });
-  el('sv-bank')?.addEventListener('click',async()=>{ const name=v('bk-name'); if(!name)return; const entry={name,nick:v('bk-nick'),type:selType,amount:+v('bk-amount')||0,purpose:v('bk-purpose'),terms:v('bk-terms'),color:selColor,notes:v('bk-notes'),returnPct:v('bk-return')}; if(editBankIdx!==null){banks[editBankIdx]={...banks[editBankIdx],...entry};editBankIdx=null;}else{banks.push({id:Date.now(),...entry});} el('m-bank-title').textContent='Add Account'; el('sv-bank').textContent='Save'; await save(); renderMoneyMap(); renderOverview(); ['bk-name','bk-nick','bk-amount','bk-return','bk-purpose','bk-terms','bk-notes'].forEach(id=>sv(id,'')); closeM('m-bank'); });
+  el('btn-add-bank')?.addEventListener('click',()=>{ editBankIdx=null; selColor='#10b981'; selType='fixed'; document.querySelectorAll('.color-swatch').forEach(x=>x.classList.remove('sel')); document.querySelector('.color-swatch[data-color="#10b981"]')?.classList.add('sel'); document.querySelectorAll('.type-pill').forEach(x=>x.classList.remove('sel')); document.querySelector('.type-pill[data-type="fixed"]')?.classList.add('sel'); el('m-bank-title').textContent='Add Account'; el('sv-bank').textContent='Save'; ['bk-name','bk-nick','bk-amount','bk-return','bk-purpose','bk-terms','bk-notes'].forEach(id=>sv(id,'')); if(el('bk-keepopen'))el('bk-keepopen').checked=false; openM('m-bank'); });
+  el('sv-bank')?.addEventListener('click',async()=>{ const name=v('bk-name'); if(!name)return; const keepOpen=el('bk-keepopen')?.checked||false; const entry={name,nick:v('bk-nick'),type:selType,amount:+v('bk-amount')||0,purpose:v('bk-purpose'),terms:v('bk-terms'),color:selColor,notes:v('bk-notes'),returnPct:v('bk-return'),keepOpen}; if(editBankIdx!==null){banks[editBankIdx]={...banks[editBankIdx],...entry};editBankIdx=null;}else{banks.push({id:Date.now(),...entry});} el('m-bank-title').textContent='Add Account'; el('sv-bank').textContent='Save'; await save(); renderMoneyMap(); renderOverview(); ['bk-name','bk-nick','bk-amount','bk-return','bk-purpose','bk-terms','bk-notes'].forEach(id=>sv(id,'')); closeM('m-bank'); });
   el('sv-edit-bank')?.addEventListener('click',async()=>{ if(editBankIdx===null)return; banks[editBankIdx].amount=+v('eb-amount')||0; if(v('eb-notes'))banks[editBankIdx].notes=v('eb-notes'); await save(); renderMoneyMap(); renderOverview(); closeM('m-edit-bank'); editBankIdx=null; });
-  window.editBank=i=>{ editBankIdx=i; const b=banks[i]; sv('bk-name',b.name); sv('bk-nick',b.nick||''); sv('bk-amount',b.amount); sv('bk-return',b.returnPct||''); sv('bk-purpose',b.purpose||''); sv('bk-terms',b.terms||''); sv('bk-notes',b.notes||''); selColor=b.color; selType=b.type; document.querySelectorAll('.color-swatch').forEach(x=>x.classList.remove('sel')); document.querySelector(`.color-swatch[data-color="${b.color}"]`)?.classList.add('sel'); document.querySelectorAll('.type-pill').forEach(x=>x.classList.remove('sel')); document.querySelector(`.type-pill[data-type="${b.type}"]`)?.classList.add('sel'); el('m-bank-title').textContent='Edit Account'; el('sv-bank').textContent='Save Changes'; openM('m-bank'); };
+  window.editBank=i=>{ editBankIdx=i; const b=banks[i]; sv('bk-name',b.name); sv('bk-nick',b.nick||''); sv('bk-amount',b.amount); sv('bk-return',b.returnPct||''); sv('bk-purpose',b.purpose||''); sv('bk-terms',b.terms||''); sv('bk-notes',b.notes||''); if(el('bk-keepopen'))el('bk-keepopen').checked=b.keepOpen||false; selColor=b.color; selType=b.type; document.querySelectorAll('.color-swatch').forEach(x=>x.classList.remove('sel')); document.querySelector(`.color-swatch[data-color="${b.color}"]`)?.classList.add('sel'); document.querySelectorAll('.type-pill').forEach(x=>x.classList.remove('sel')); document.querySelector(`.type-pill[data-type="${b.type}"]`)?.classList.add('sel'); el('m-bank-title').textContent='Edit Account'; el('sv-bank').textContent='Save Changes'; openM('m-bank'); };
   window.dBank=async i=>{banks.splice(i,1);await save();renderMoneyMap();renderOverview();};
 
   // ── Allocation planner ──
@@ -232,7 +235,7 @@ function closeM(id){el('ov').classList.remove('open');el(id)?.classList.remove('
 function autoSumSpending(){const total=SPEND_CATS.reduce((s,c)=>s+(+(el('ms-'+c.key)?.value||0)),0);const t=el('ms-total');if(t)t.value=total||'';}
 
 function renderAll(){
-  renderOverview(); renderSpending();
+  renderOverview(); renderSpending(); renderPlans();
   renderMoneyMap(); renderAllocPlanner(); renderLibrary(); renderPrinciples();
 }
 
@@ -316,20 +319,21 @@ function renderBanks(){
           ${filtered.map(b=>{
             const ri=banks.indexOf(b), p=pct(b.amount,total);
             const typeColor=TYPE_COLORS[b.type]||b.color;
-            return `<tr style="border-bottom:1px solid #f5f0ff;transition:background .12s" onmouseover="this.style.background='rgba(168,85,247,.04)'" onmouseout="this.style.background=''">
-              <td style="padding:10px 10px"><div style="width:14px;height:14px;border-radius:50%;background:${b.color};flex-shrink:0"></div></td>
-              <td style="padding:10px 10px;font-weight:600;color:var(--t)">${b.name}</td>
+            const isKO = b.keepOpen||false;
+            return `<tr style="border-bottom:1px solid #f5f0ff;transition:background .12s;${isKO?'opacity:.45;':''}">
+              <td style="padding:10px 10px"><div style="width:14px;height:14px;border-radius:50%;background:${isKO?'#d1d5db':b.color};flex-shrink:0"></div></td>
+              <td style="padding:10px 10px;font-weight:600;color:${isKO?'var(--t3)':'var(--t)'}">${b.name}${isKO?'<span style="font-size:9px;font-weight:600;padding:1px 6px;border-radius:20px;background:#f3f4f6;color:#9ca3af;margin-left:5px">keep open</span>':''}</td>
               <td style="padding:10px 10px">
-                <div style="font-size:12px;color:var(--t2)">${b.nick||'—'}</div>
-                <span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;background:${typeColor}18;color:${typeColor}">${TYPE_LABELS[b.type]||b.type}</span>
+                <div style="font-size:12px;color:var(--t3)">${b.nick||'—'}</div>
+                <span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;background:${isKO?'#f3f4f6':typeColor+'18'};color:${isKO?'#9ca3af':typeColor}">${TYPE_LABELS[b.type]||b.type}</span>
               </td>
               <td style="padding:10px 10px;font-size:12px;color:var(--t3)">${b.purpose||'—'}</td>
               <td style="padding:10px 10px;text-align:center">
-                ${b.returnPct?`<span style="font-size:11px;font-weight:600;color:var(--green)">+${b.returnPct}% p.a.</span>`:`<span style="color:var(--t3)">—</span>`}
+                ${b.returnPct?`<span style="font-size:11px;font-weight:600;color:${isKO?'#9ca3af':'var(--green)'}">+${b.returnPct}% p.a.</span>`:`<span style="color:var(--t3)">—</span>`}
               </td>
               <td style="padding:10px 10px;font-size:12px;color:var(--t3)">${b.terms||'—'}</td>
-              <td style="padding:10px 10px;text-align:right;font-family:var(--font-d);font-size:14px;font-weight:700;color:var(--t)">${fmt(b.amount)}</td>
-              <td style="padding:10px 10px;text-align:right"><span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:${typeColor}18;color:${typeColor}">${p}%</span></td>
+              <td style="padding:10px 10px;text-align:right;font-family:var(--font-d);font-size:14px;font-weight:700;color:${isKO?'var(--t3)':'var(--t)'}">${fmt(b.amount)}</td>
+              <td style="padding:10px 10px;text-align:right"><span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:${isKO?'#f3f4f6':typeColor+'18'};color:${isKO?'#9ca3af':typeColor}">${p}%</span></td>
               <td style="padding:10px 10px;text-align:right">
                 <div style="display:flex;gap:4px;justify-content:flex-end">
                   <button class="btn btn-g btn-sm" onclick="editBank(${ri})" style="padding:4px 10px;font-size:11px">Edit</button>
@@ -357,7 +361,7 @@ function renderPie(){
   const W=200,H=200,cx=W/2,cy=H/2,R=88,RI=56;
   ctx.clearRect(0,0,W,H);
   // Group into 3 buckets: Liquid Cash / Fixed Deposits / Investment
-  const liquidAmt  = banks.filter(b=>['checking','savings'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
+  const liquidAmt  = banks.filter(b=>['checking','savings','esavings'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
   const fixedAmt   = banks.filter(b=>b.type==='fixed').reduce((s,b)=>s+b.amount,0);
   const investAmt  = banks.filter(b=>['fixedincome','investment','alternatives','gold','hedges'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
   const segments = [
@@ -374,7 +378,7 @@ function renderPie(){
 
 function renderAllocSummary(){
   const total=totalWealthFromBanks(); if(!banks.length){el('alloc-summary').innerHTML='';return;}
-  const liquidAmt = banks.filter(b=>['checking','savings'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
+  const liquidAmt = banks.filter(b=>['checking','savings','esavings'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
   const fixedAmt  = banks.filter(b=>b.type==='fixed').reduce((s,b)=>s+b.amount,0);
   const invAmt    = banks.filter(b=>['fixedincome','investment','alternatives','gold','hedges'].includes(b.type)).reduce((s,b)=>s+b.amount,0);
   const cashAmt   = liquidAmt + fixedAmt;
@@ -789,4 +793,142 @@ function renderPrinciples(){
   const wrap=el('principles-list');
   if(!principles.length){wrap.innerHTML='<div class="empty">No principles yet</div>';return;}
   wrap.innerHTML=principles.map(p=>`<div class="glass" style="padding:1.1rem;margin-bottom:.65rem"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px"><div><div style="font-family:var(--font-d);font-size:15px;font-weight:700;color:var(--t);margin-bottom:4px">${p.title}</div>${p.tag?`<span style="display:inline-block;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:rgba(16,185,129,.12);color:#065f46">${p.tag}</span>`:''}</div><div style="display:flex;gap:5px;flex-shrink:0"><button class="btn btn-g btn-sm" onclick="editPrinciple(${p.id})">Edit</button><button class="btn btn-d btn-sm" onclick="dPrinciple(${p.id})">Delete</button></div></div>${p.body?`<div style="font-size:13px;color:var(--t2);line-height:1.7;white-space:pre-wrap;background:rgba(240,253,244,.5);border:1px solid #d1fae5;border-radius:10px;padding:.75rem 1rem;margin-top:8px">${p.body}</div>`:''}</div>`).join('');
+}
+
+
+
+// ══════════════════════════════════════════════════════
+// ALLOCATION PLANS
+// ══════════════════════════════════════════════════════
+let editPlanId = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Plans tab init
+  el('btn-add-plan')?.addEventListener('click', () => {
+    editPlanId = null;
+    el('m-plan-title').textContent = 'New Allocation Plan';
+    sv('pl-name', ''); sv('pl-notes', '');
+    el('pl-date').value = new Date().toISOString().split('T')[0];
+    buildPlanRows([]);
+    openM('m-plan');
+  });
+
+  el('sv-plan')?.addEventListener('click', async () => {
+    const name = v('pl-name'); if (!name) return;
+    const rows = collectPlanRows();
+    const entry = { id: editPlanId||Date.now(), name, date: v('pl-date'), notes: v('pl-notes'), rows, created: new Date().toISOString() };
+    if (editPlanId) { const i = plans.findIndex(x=>x.id===editPlanId); plans[i]=entry; editPlanId=null; }
+    else { plans.push(entry); }
+    await save(); renderPlans(); closeM('m-plan');
+  });
+
+  window.editPlan = id => {
+    editPlanId = id;
+    const p = plans.find(x=>x.id===id); if (!p) return;
+    el('m-plan-title').textContent = 'Edit Plan';
+    sv('pl-name', p.name); sv('pl-notes', p.notes||'');
+    el('pl-date').value = p.date||'';
+    buildPlanRows(p.rows||[]);
+    openM('m-plan');
+  };
+
+  window.dPlan = async id => { plans=plans.filter(x=>x.id!==id); await save(); renderPlans(); };
+
+  window.addPlanRow = () => {
+    const wrap = el('pl-rows');
+    const idx = wrap.children.length;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center';
+    row.innerHTML = `
+      <input placeholder="Account / Bank" style="padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px">
+      <input placeholder="Target amount (฿)" type="number" style="padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px">
+      <input placeholder="Purpose / note" style="padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px">
+      <button onclick="this.closest('div').remove()" style="padding:4px 9px;border-radius:8px;border:1px solid #fecaca;background:#fff;color:#ef4444;font-size:13px;cursor:pointer;flex-shrink:0">x</button>`;
+    wrap.appendChild(row);
+  };
+});
+
+function buildPlanRows(rows) {
+  const wrap = el('pl-rows');
+  wrap.innerHTML = '';
+  (rows.length ? rows : [{}]).forEach(r => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center';
+    row.innerHTML = `
+      <input placeholder="Account / Bank" value="${r.account||''}" style="padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px">
+      <input placeholder="Target amount (฿)" type="number" value="${r.amount||''}" style="padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px">
+      <input placeholder="Purpose / note" value="${r.note||''}" style="padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px">
+      <button onclick="this.closest('div').remove()" style="padding:4px 9px;border-radius:8px;border:1px solid #fecaca;background:#fff;color:#ef4444;font-size:13px;cursor:pointer">x</button>`;
+    wrap.appendChild(row);
+  });
+}
+
+function collectPlanRows() {
+  return [...el('pl-rows').children].map(row => {
+    const inputs = row.querySelectorAll('input');
+    return { account: inputs[0]?.value||'', amount: +inputs[1]?.value||0, note: inputs[2]?.value||'' };
+  }).filter(r => r.account);
+}
+
+function renderPlans() {
+  const wrap = el('plans-list');
+  if (!wrap) return;
+  if (!plans.length) {
+    wrap.innerHTML = '<div class="empty">No allocation plans yet — create your first plan to map out where you want your money to go</div>';
+    return;
+  }
+  const totalWealth = totalWealthFromBanks();
+  wrap.innerHTML = [...plans].sort((a,b) => (b.date||'').localeCompare(a.date||'')).map(p => {
+    const rowTotal = (p.rows||[]).reduce((s,r)=>s+r.amount, 0);
+    const rowsHtml = (p.rows||[]).length ? `
+      <div style="margin-top:10px;overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="border-bottom:1px solid #f0fdf4">
+              <th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t3)">Account</th>
+              <th style="text-align:right;padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t3)">Target</th>
+              <th style="text-align:right;padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t3)">% of total</th>
+              <th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t3)">Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(p.rows||[]).map(r=>`<tr style="border-bottom:1px solid #f9fafb">
+              <td style="padding:6px 8px;font-weight:500;color:var(--t)">${r.account}</td>
+              <td style="padding:6px 8px;text-align:right;font-family:var(--font-d);font-weight:700;color:#10b981">${fmt(r.amount)}</td>
+              <td style="padding:6px 8px;text-align:right;color:var(--t3)">${totalWealth>0?pct(r.amount,totalWealth):'—'}%</td>
+              <td style="padding:6px 8px;color:var(--t3)">${r.note||'—'}</td>
+            </tr>`).join('')}
+            <tr style="border-top:2px solid #f0fdf4;background:rgba(16,185,129,.03)">
+              <td style="padding:6px 8px;font-weight:700;color:var(--t2)">Total planned</td>
+              <td style="padding:6px 8px;text-align:right;font-family:var(--font-d);font-weight:800;color:#10b981">${fmt(rowTotal)}</td>
+              <td style="padding:6px 8px;text-align:right;font-weight:600;color:#10b981">${totalWealth>0?pct(rowTotal,totalWealth):'—'}%</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>` : '<div style="font-size:12px;color:var(--t3);font-style:italic;margin-top:8px">No account rows — edit to add targets</div>';
+
+    // Visual bar of the plan
+    const barSegs = (p.rows||[]).filter(r=>r.amount>0&&totalWealth>0).map((r,i)=>{
+      const colors=['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ec4899','#06b6d4','#f97316'];
+      return `<div style="height:6px;background:${colors[i%colors.length]};width:${pct(r.amount,totalWealth)}%;min-width:2px;transition:width .3s" title="${r.account}: ${fmt(r.amount)}"></div>`;
+    }).join('');
+
+    return `<div class="glass" style="padding:1.1rem;margin-bottom:.8rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+        <div>
+          <div style="font-family:var(--font-d);font-size:15px;font-weight:700;color:var(--t);margin-bottom:3px">${p.name}</div>
+          <div style="font-size:11px;color:var(--t3)">Plan made: ${p.date ? new Date(p.date+'T12:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : 'No date'}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <span style="font-size:12px;font-weight:600;color:#10b981;align-self:center">${fmt(rowTotal)} planned</span>
+          <button class="btn btn-g btn-sm" onclick="editPlan(${p.id})">Edit</button>
+          <button class="btn btn-d btn-sm" onclick="dPlan(${p.id})">Delete</button>
+        </div>
+      </div>
+      ${barSegs ? `<div style="display:flex;height:6px;border-radius:20px;overflow:hidden;gap:1px;margin-bottom:8px">${barSegs}<div style="flex:1;background:#f0fdf4;min-width:0"></div></div>` : ''}
+      ${p.notes ? `<div style="font-size:12px;color:var(--t2);background:#f0fdf4;border-radius:8px;padding:.5rem .75rem;margin-bottom:8px;line-height:1.5;border:1px solid #d1fae5">${p.notes}</div>` : ''}
+      ${rowsHtml}
+    </div>`;
+  }).join('');
 }
