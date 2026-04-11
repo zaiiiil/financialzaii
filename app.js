@@ -1238,7 +1238,6 @@ function collectPlanRows() {
 
 // ── TRANSFER LISTENERS ───────────────────────────────────────────
 function initTransferListeners() {
-  let editTransferId = null;
 
   el('btn-add-transfer')?.addEventListener('click', () => {
     editTransferId = null;
