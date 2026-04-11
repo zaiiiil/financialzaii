@@ -166,11 +166,13 @@ document.addEventListener('DOMContentLoaded', async ()=>{
       document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
       b.classList.add('active');
       el('p-'+t)?.classList.add('active');
+      // Close details dropdown and highlight group label
       document.querySelectorAll('.grp-label').forEach(l=>l.classList.remove('active'));
       const parentGrp = b.closest('.grp');
-      if(parentGrp) parentGrp.querySelector('.grp-label')?.classList.add('active');
-      b.blur();
-      if(parentGrp) parentGrp.querySelector('.grp-label')?.blur();
+      if(parentGrp) {
+        parentGrp.removeAttribute('open');
+        parentGrp.querySelector('.grp-label')?.classList.add('active');
+      }
       if(t==='alloc') renderAllocPlanner();
       if(t==='budget') renderBudget();
       if(t==='transfers') renderTransfers();
