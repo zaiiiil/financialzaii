@@ -174,24 +174,11 @@ document.addEventListener('DOMContentLoaded', async ()=>{
         parentGrp.querySelector('.grp-label')?.classList.add('active');
       }
     }
-    if(t==='alloc') renderAllocPlanner();
-    if(t==='budget') renderBudget();
-    if(t==='transfers') renderTransfers();
-    if(t==='library') renderLibrary();
-    if(t==='principles') renderPrinciples();
-    if(t==='allocplans') renderPlans();
   }
 
   document.querySelectorAll('.tab[data-t]').forEach(b => {
-    // Use mousedown so it fires before <details> closes on blur
-    b.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      switchToTab(b.dataset.t);
-    });
-    // Fallback for touch/keyboard
-    b.addEventListener('click', (e) => {
-      if(e.detail === 0) switchToTab(b.dataset.t); // keyboard enter
-    });
+    b.addEventListener('mousedown', (e) => { e.preventDefault(); switchToTab(b.dataset.t); });
+    b.addEventListener('click', (e) => { if(e.detail===0) switchToTab(b.dataset.t); });
   });
 
 
@@ -260,8 +247,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   window.editPrinciple=id=>{ editPrincipleId=id; const p=principles.find(x=>x.id===id); if(!p)return; el('pr-modal-title').textContent='Edit Principle'; sv('pr-title',p.title); sv('pr-body',p.body||''); sv('pr-tag',p.tag||''); openM('m-principle'); };
   window.dPrinciple=async id=>{principles=principles.filter(x=>x.id!==id);await save();renderPrinciples();};
 
-  renderAll();
   initBudgetListeners();
+  renderAll();
 });
 
 function openM(id){el('ov').classList.add('open');el(id)?.classList.add('open');}
@@ -271,7 +258,7 @@ function autoSumSpending(){const total=SPEND_CATS.reduce((s,c)=>s+(+(el('ms-'+c.
 function renderAll(){
   renderOverview(); renderMoneyMap(); renderSpending();
   renderPlans(); renderTransfers(); renderLibrary();
-  renderPrinciples(); renderAllocPlanner();
+  renderPrinciples(); renderAllocPlanner(); renderBudget();
 }
 
 
