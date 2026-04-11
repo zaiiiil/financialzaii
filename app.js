@@ -158,47 +158,21 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   await loadFromFirebase();
   document.querySelectorAll('.panel').forEach(p=>p.style.opacity='1');
 
-  // Grouped tab navigation
+  // Tab navigation
   document.querySelectorAll('.tab[data-t]').forEach(b => {
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
+    b.addEventListener('click', () => {
       const t = b.dataset.t; if(!t) return;
-      // Close all dropdowns
-      document.querySelectorAll('.tab-group').forEach(g=>g.classList.remove('open'));
-      // Deactivate all tabs and panels
       document.querySelectorAll('.tab[data-t]').forEach(x=>x.classList.remove('active'));
       document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
-      // Activate this tab and panel
       b.classList.add('active');
       el('p-'+t)?.classList.add('active');
-      // Highlight parent group button if tab is inside a dropdown
-      document.querySelectorAll('.tab-group').forEach(g=>{
-        const hasActive = g.querySelector('.tab.active');
-        g.querySelector('.tab-group-btn')?.classList.toggle('group-active', !!hasActive);
-      });
-      // Render on demand
       if(t==='alloc') renderAllocPlanner();
       if(t==='budget') renderBudget();
       if(t==='transfers') renderTransfers();
     });
   });
 
-  // Group dropdown buttons
-  ['money','spending','invest'].forEach(name => {
-    const btn = el('grp-btn-'+name);
-    const grp = el('grp-'+name);
-    if(!btn||!grp) return;
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      const wasOpen = grp.classList.contains('open');
-      document.querySelectorAll('.tab-group').forEach(g => g.classList.remove('open'));
-      if(!wasOpen) grp.classList.add('open');
-    });
-  });
-  // Close dropdowns when clicking outside
-  document.addEventListener('click', () => {
-    document.querySelectorAll('.tab-group').forEach(g => g.classList.remove('open'));
-  });
+
 
 
   // Overlay
