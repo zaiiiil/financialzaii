@@ -19,6 +19,7 @@
   <button class="tab active" data-t="overview">Overview</button>
   <button class="tab" data-t="moneymap">Money Map</button>
   <button class="tab" data-t="spending">Monthly Spending</button>
+  <button class="tab" data-t="budget">Budget Planner</button>
   <button class="tab" data-t="alloc">Investment Allocation Planner</button>
   <button class="tab" data-t="library">Product Library</button>
   <button class="tab" data-t="allocplans">Allocation Plans</button>
@@ -78,6 +79,23 @@
     </div>
     <div class="divl"><span>Allocation Summary</span></div>
     <div id="alloc-summary"></div>
+  </div>
+
+  <!-- BUDGET PLANNER -->
+  <div class="panel" id="p-budget">
+    <div class="ph">
+      <div><div class="ptitle">Budget Planner</div><div class="psub">Fixed costs · essential estimates · discretionary goals · savings target</div></div>
+    </div>
+    <div class="kpi-grid" id="budget-stats"></div>
+    <div class="glass" style="padding:1.1rem;margin-bottom:1.2rem" id="budget-bar"></div>
+    <div class="divl"><span>Monthly income & savings goal</span></div>
+    <div class="glass" style="padding:.5rem 1rem;margin-bottom:1.2rem" id="budget-income-section"></div>
+    <div class="divl"><span>Fixed costs <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:rgba(226,75,74,.1);color:#a32d2d;margin-left:4px">exact every month</span></span></div>
+    <div class="glass" style="padding:.5rem 1rem;margin-bottom:1.2rem" id="budget-fixed-section"></div>
+    <div class="divl"><span>Essential estimates <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:rgba(186,117,23,.1);color:#633806;margin-left:4px">necessary but varies</span></span></div>
+    <div class="glass" style="padding:.5rem 1rem;margin-bottom:1.2rem" id="budget-ess-section"></div>
+    <div class="divl"><span>Discretionary goals <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:rgba(55,138,221,.1);color:#0c447c;margin-left:4px">cap yourself here</span></span></div>
+    <div class="glass" style="padding:.5rem 1rem;margin-bottom:1.2rem" id="budget-disc-section"></div>
   </div>
 
   <!-- INVESTMENT ALLOCATION PLANNER -->
