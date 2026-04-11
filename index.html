@@ -18,14 +18,32 @@
 
 <nav class="tabs">
   <button class="tab active" data-t="overview">Overview</button>
-  <button class="tab" data-t="moneymap">Bank Accounts</button>
-  <button class="tab" data-t="allocplans">Allocation Plans</button>
-  <button class="tab" data-t="spending">Monthly Spending</button>
-  <button class="tab" data-t="budget">Budget Planner</button>
-  <button class="tab" data-t="transfers">Transfer Summary</button>
-  <button class="tab" data-t="alloc">Investment Planner</button>
-  <button class="tab" data-t="library">Product Library</button>
-  <button class="tab" data-t="principles">Principles</button>
+
+  <div class="grp">
+    <button class="tab grp-label">Money Map &#9660;</button>
+    <div class="grp-menu">
+      <button class="tab grp-item" data-t="moneymap">Bank Accounts</button>
+      <button class="tab grp-item" data-t="allocplans">Allocation Plans</button>
+    </div>
+  </div>
+
+  <div class="grp">
+    <button class="tab grp-label">Spending Goals &#9660;</button>
+    <div class="grp-menu">
+      <button class="tab grp-item" data-t="spending">Monthly Spending</button>
+      <button class="tab grp-item" data-t="budget">Budget Planner</button>
+      <button class="tab grp-item" data-t="transfers">Transfer Summary</button>
+    </div>
+  </div>
+
+  <div class="grp">
+    <button class="tab grp-label">Investment &#9660;</button>
+    <div class="grp-menu">
+      <button class="tab grp-item" data-t="alloc">Allocation Planner</button>
+      <button class="tab grp-item" data-t="library">Product Library</button>
+      <button class="tab grp-item" data-t="principles">Principles</button>
+    </div>
+  </div>
 </nav>
 
 <div class="main-wrap">
