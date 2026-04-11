@@ -5,25 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>finance portal</title>
   <link rel="stylesheet" href="style.css">
-  <style>
-    .tab-group { position:relative; display:inline-block; }
-    .tab-group-btn.group-active { color:var(--acc); border-bottom:2px solid var(--acc); }
-    .tab-dropdown {
-      display:none; position:absolute; top:calc(100% + 4px); left:0; z-index:500;
-      background:#fff; border:1px solid rgba(168,85,247,.2);
-      border-radius:12px; padding:6px; min-width:210px;
-      box-shadow:0 8px 32px rgba(0,0,0,.12);
-    }
-    .tab-group.open .tab-dropdown { display:block; }
-    .tab-dropdown .tab {
-      display:block; width:100%; text-align:left;
-      border-radius:8px; margin-bottom:2px; border:none;
-      padding:9px 14px; font-size:13px; background:transparent;
-    }
-    .tab-dropdown .tab:last-child { margin-bottom:0; }
-    .tab-dropdown .tab:hover { background:rgba(168,85,247,.08); }
-    .tab-dropdown .tab.active { background:rgba(168,85,247,.1); color:var(--acc); font-weight:600; }
-  </style>
+
 </head>
 <body>
 <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
@@ -34,34 +16,16 @@
   <div class="hdr-right"><span class="hdate" id="hdate"></span></div>
 </header>
 
-<nav class="tabs" style="flex-wrap:wrap;gap:4px">
+<nav class="tabs">
   <button class="tab active" data-t="overview">Overview</button>
-
-  <div class="tab-group" id="grp-money">
-    <button class="tab tab-group-btn" id="grp-btn-money" id="grp-btn-money">Money Map ▾</button>
-    <div class="tab-dropdown">
-      <button class="tab" data-t="moneymap">Bank Accounts</button>
-      <button class="tab" data-t="allocplans">Allocation Plans</button>
-    </div>
-  </div>
-
-  <div class="tab-group" id="grp-spending">
-    <button class="tab tab-group-btn" id="grp-btn-spending" id="grp-btn-spending">Spending Goals ▾</button>
-    <div class="tab-dropdown">
-      <button class="tab" data-t="spending">Monthly Spending</button>
-      <button class="tab" data-t="budget">Budget Planner</button>
-      <button class="tab" data-t="transfers">Transfer Summary</button>
-    </div>
-  </div>
-
-  <div class="tab-group" id="grp-invest">
-    <button class="tab tab-group-btn" id="grp-btn-invest" id="grp-btn-invest">Investment ▾</button>
-    <div class="tab-dropdown">
-      <button class="tab" data-t="alloc">Allocation Planner</button>
-      <button class="tab" data-t="library">Product Library</button>
-      <button class="tab" data-t="principles">Principles</button>
-    </div>
-  </div>
+  <button class="tab" data-t="moneymap">Bank Accounts</button>
+  <button class="tab" data-t="allocplans">Allocation Plans</button>
+  <button class="tab" data-t="spending">Monthly Spending</button>
+  <button class="tab" data-t="budget">Budget Planner</button>
+  <button class="tab" data-t="transfers">Transfer Summary</button>
+  <button class="tab" data-t="alloc">Investment Planner</button>
+  <button class="tab" data-t="library">Product Library</button>
+  <button class="tab" data-t="principles">Principles</button>
 </nav>
 
 <div class="main-wrap">
