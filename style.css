@@ -42,12 +42,14 @@ html, body { font-family: var(--font); font-size: 14px; line-height: 1.6; backgr
 .tabs { background: rgba(255,255,255,.86); backdrop-filter: blur(20px); border-bottom: 1px solid var(--bd); display: flex; align-items: center; padding: 0 1.75rem; position: sticky; top: 58px; z-index: 40; overflow: visible; scrollbar-width: none; gap: 2px; }
 
 /* CSS-only grouped dropdowns */
-.grp { position: relative; }
-.grp-label { cursor: pointer; }
+.grp { position: relative; display: flex; align-items: center; }
+.grp-label { cursor: pointer; white-space: nowrap; }
 .grp-menu {
-  display: none;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
   position: absolute;
-  top: calc(100% + 2px);
+  top: 100%;
   left: 0;
   z-index: 9999;
   background: #fff;
@@ -56,8 +58,13 @@ html, body { font-family: var(--font); font-size: 14px; line-height: 1.6; backgr
   padding: 5px;
   min-width: 200px;
   box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  transition: opacity .15s, visibility .15s;
 }
-.grp:focus-within .grp-menu { display: block; }
+.grp:focus-within .grp-menu {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
 .grp-item {
   display: block !important;
   width: 100%;
@@ -67,10 +74,11 @@ html, body { font-family: var(--font); font-size: 14px; line-height: 1.6; backgr
   margin-bottom: 2px;
   white-space: nowrap;
   border-bottom: none !important;
+  background: transparent;
 }
 .grp-item:last-child { margin-bottom: 0; }
 .grp-item:hover { background: rgba(168,85,247,.08); }
-.grp-item.active { background: rgba(168,85,247,.1); color: var(--acc); }
+.grp-item.active { background: rgba(168,85,247,.1); color: var(--acc); font-weight: 600; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab { padding: 13px 16px; font-family: var(--font); font-size: 12px; font-weight: 500; color: var(--t3); background: none; border: none; border-bottom: 2.5px solid transparent; cursor: pointer; white-space: nowrap; transition: all .18s; flex-shrink: 0; }
 .tab:hover { color: var(--t2); }
