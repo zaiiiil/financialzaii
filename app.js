@@ -166,6 +166,11 @@ document.addEventListener('DOMContentLoaded', async ()=>{
       document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
       b.classList.add('active');
       el('p-'+t)?.classList.add('active');
+      document.querySelectorAll('.grp-label').forEach(l=>l.classList.remove('active'));
+      const parentGrp = b.closest('.grp');
+      if(parentGrp) parentGrp.querySelector('.grp-label')?.classList.add('active');
+      b.blur();
+      if(parentGrp) parentGrp.querySelector('.grp-label')?.blur();
       if(t==='alloc') renderAllocPlanner();
       if(t==='budget') renderBudget();
       if(t==='transfers') renderTransfers();
@@ -246,7 +251,8 @@ function closeM(id){el('ov').classList.remove('open');el(id)?.classList.remove('
 function autoSumSpending(){const total=SPEND_CATS.reduce((s,c)=>s+(+(el('ms-'+c.key)?.value||0)),0);const t=el('ms-total');if(t)t.value=total||'';}
 
 function renderAll(){
-  renderOverview(); renderSpending(); renderPlans(); renderTransfers();
+  renderOverview(); renderMoneyMap(); renderSpending(); renderPlans();
+  renderTransfers(); renderLibrary(); renderPrinciples();
   initBudgetListeners();
 
   // Plans listeners
@@ -320,7 +326,7 @@ function renderAll(){
     wrap.appendChild(row);
   };
 
-  renderMoneyMap(); renderAllocPlanner(); renderLibrary(); renderPrinciples();
+  renderMoneyMap(); renderAllocPlanner();
 }
 
 // ══════════════════════════════════════════════════════
