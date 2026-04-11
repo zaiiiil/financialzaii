@@ -244,6 +244,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   window.dPrinciple=async id=>{principles=principles.filter(x=>x.id!==id);await save();renderPrinciples();};
 
   renderAll();
+  initBudgetListeners();
 });
 
 function openM(id){el('ov').classList.add('open');el(id)?.classList.add('open');}
@@ -251,83 +252,11 @@ function closeM(id){el('ov').classList.remove('open');el(id)?.classList.remove('
 function autoSumSpending(){const total=SPEND_CATS.reduce((s,c)=>s+(+(el('ms-'+c.key)?.value||0)),0);const t=el('ms-total');if(t)t.value=total||'';}
 
 function renderAll(){
-  renderOverview(); renderMoneyMap(); renderSpending(); renderPlans();
-  renderTransfers(); renderLibrary(); renderPrinciples();
-  initBudgetListeners();
-
-  // Plans listeners
-  el('btn-add-plan')?.addEventListener('click', () => {
-    editPlanId = null;
-    el('m-plan-title').textContent = 'New Allocation Plan';
-    sv('pl-name', ''); sv('pl-notes', '');
-    el('pl-date').value = new Date().toISOString().split('T')[0];
-    buildPlanRows([]);
-    openM('m-plan');
-  });
-  el('sv-plan')?.addEventListener('click', async () => {
-    const name = v('pl-name'); if (!name) return;
-    const rows = collectPlanRows();
-    const entry = { id: editPlanId||Date.now(), name, date: v('pl-date'), notes: v('pl-notes'), rows, created: new Date().toISOString() };
-    if (editPlanId) { const i = plans.findIndex(x=>x.id===editPlanId); plans[i]=entry; editPlanId=null; }
-    else { plans.push(entry); }
-    await save(); renderPlans(); closeM('m-plan');
-  });
-  window.editPlan = id => {
-    editPlanId = id;
-    const p = plans.find(x=>x.id===id); if (!p) return;
-    el('m-plan-title').textContent = 'Edit Plan';
-    sv('pl-name', p.name); sv('pl-notes', p.notes||'');
-    el('pl-date').value = p.date||'';
-    buildPlanRows(p.rows||[]);
-    openM('m-plan');
-  };
-  window.dPlan = async id => { plans=plans.filter(x=>x.id!==id); await save(); renderPlans(); };
-  window.addPlanRow = () => {
-    const wrap = el('pl-rows'); if(!wrap) return;
-    const row = document.createElement('div');
-    row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center';
-    row.innerHTML = ["<input placeholder='Account' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px'>","<input placeholder='Target (฿)' type='number' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px'>","<input placeholder='Purpose' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px'>","<button onclick='this.parentElement.remove()' style='padding:4px 9px;border-radius:8px;border:1px solid #fecaca;background:#fff;color:#ef4444;cursor:pointer'>x</button>"].join('');
-    wrap.appendChild(row);
-  };
-
-  // Transfer listeners
-  el('btn-add-transfer')?.addEventListener('click', ()=>{
-    editTransferId = null;
-    el('m-transfer-title').textContent = 'New Transfer Summary';
-    ['tr-title','tr-person','tr-notes'].forEach(id=>sv(id,''));
-    el('tr-date').value = new Date().toISOString().split('T')[0];
-    buildTransferRows([{desc:'Gym membership',amt:1500},{desc:'Phone & Internet',amt:799}]);
-    openM('m-transfer');
-  });
-  el('sv-transfer')?.addEventListener('click', async ()=>{
-    const title = v('tr-title'); if(!title) return;
-    const rows = collectTransferRows();
-    const net = rows.reduce((s,r)=>s+r.amt,0);
-    const entry = { id:editTransferId||Date.now(), title, date:v('tr-date'), person:v('tr-person'), notes:v('tr-notes'), rows, net };
-    if(editTransferId){ const i=transfers.findIndex(x=>x.id===editTransferId); transfers[i]=entry; editTransferId=null; }
-    else { transfers.push(entry); }
-    await save(); renderTransfers(); closeM('m-transfer');
-  });
-  window.editTransfer = id => {
-    editTransferId = id;
-    const t = transfers.find(x=>x.id===id); if(!t) return;
-    el('m-transfer-title').textContent = 'Edit Transfer Summary';
-    sv('tr-title',t.title); sv('tr-person',t.person||''); sv('tr-notes',t.notes||'');
-    el('tr-date').value = t.date||'';
-    buildTransferRows(t.rows||[]);
-    openM('m-transfer');
-  };
-  window.dTransfer = async id => { transfers=transfers.filter(x=>x.id!==id); await save(); renderTransfers(); };
-  window.addTransferRow = () => {
-    const wrap = el('tr-rows'); if(!wrap) return;
-    const row = document.createElement('div');
-    row.style.cssText = 'display:grid;grid-template-columns:1fr 120px auto;gap:6px;margin-bottom:6px;align-items:center';
-    row.innerHTML = ["<input placeholder='Description (e.g. Gym membership)' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;color:var(--t);background:transparent'>","<input type='number' placeholder='Amount (฿)' style='padding:6px 9px;border:1px solid #d1fae5;border-radius:8px;font-size:12px;text-align:right;color:var(--t);background:transparent'>","<button onclick='this.parentElement.remove()' style='padding:4px 9px;border-radius:8px;border:1px solid #fecaca;background:#fff;color:#ef4444;cursor:pointer'>x</button>"].join('');
-    wrap.appendChild(row);
-  };
-
-  renderMoneyMap(); renderAllocPlanner();
+  renderOverview(); renderMoneyMap(); renderSpending();
+  renderPlans(); renderTransfers(); renderLibrary();
+  renderPrinciples(); renderAllocPlanner();
 }
+
 
 // ══════════════════════════════════════════════════════
 // OVERVIEW
