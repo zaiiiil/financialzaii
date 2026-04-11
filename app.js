@@ -67,7 +67,7 @@ async function saveToFirebase() {
   try {
     await setDoc(doc(db,"portals",DOC_ID),{
       overview,months,principles,banks,mmIncome,
-      invMonthly,allocClasses,allocTotal,library
+      invMonthly,allocClasses,allocTotal,library,plans,transfers
     });
   } catch(e) {
     console.warn("Firebase save failed:",e);
@@ -193,6 +193,9 @@ document.addEventListener('DOMContentLoaded', async ()=>{
       if(t==='alloc') renderAllocPlanner();
       if(t==='budget') renderBudget();
       if(t==='transfers') renderTransfers();
+      if(t==='library') renderLibrary();
+      if(t==='principles') renderPrinciples();
+      if(t==='allocplans') renderPlans();
     });
   });
 
