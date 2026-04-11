@@ -158,44 +158,39 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   await loadFromFirebase();
   document.querySelectorAll('.panel').forEach(p=>p.style.opacity='1');
 
-  // Prevent details dropdowns from closing before mousedown registers
-  document.querySelectorAll('.grp').forEach(details => {
-    details.addEventListener('toggle', () => {
-      // nothing — let native toggle work
-    });
-  });
-  // Keep details open while mouse is over the menu
-  document.querySelectorAll('.grp-menu').forEach(menu => {
-    menu.addEventListener('mouseenter', () => {
-      const details = menu.closest('.grp');
-      if(details) details.setAttribute('open','');
-    });
-  });
-
-  // Tab navigation — use mousedown so it fires before blur closes the details
-  document.querySelectorAll('.tab[data-t]').forEach(b => {
-    b.addEventListener('mousedown', (e) => {
-      e.preventDefault(); // prevents blur on details before we navigate
-    });
-    b.addEventListener('click', () => {
-      const t = b.dataset.t; if(!t) return;
-      document.querySelectorAll('.tab[data-t]').forEach(x=>x.classList.remove('active'));
-      document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
-      b.classList.add('active');
-      el('p-'+t)?.classList.add('active');
-      // Close details dropdown and highlight group label
-      document.querySelectorAll('.grp-label').forEach(l=>l.classList.remove('active'));
-      const parentGrp = b.closest('.grp');
+  // Tab navigation
+  function switchToTab(t) {
+    if(!t) return;
+    document.querySelectorAll('.tab[data-t]').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    const btn = document.querySelector('.tab[data-t="'+t+'"]');
+    if(btn) btn.classList.add('active');
+    el('p-'+t)?.classList.add('active');
+    document.querySelectorAll('.grp-label').forEach(l=>l.classList.remove('active'));
+    if(btn) {
+      const parentGrp = btn.closest('.grp');
       if(parentGrp) {
         parentGrp.removeAttribute('open');
         parentGrp.querySelector('.grp-label')?.classList.add('active');
       }
-      if(t==='alloc') renderAllocPlanner();
-      if(t==='budget') renderBudget();
-      if(t==='transfers') renderTransfers();
-      if(t==='library') renderLibrary();
-      if(t==='principles') renderPrinciples();
-      if(t==='allocplans') renderPlans();
+    }
+    if(t==='alloc') renderAllocPlanner();
+    if(t==='budget') renderBudget();
+    if(t==='transfers') renderTransfers();
+    if(t==='library') renderLibrary();
+    if(t==='principles') renderPrinciples();
+    if(t==='allocplans') renderPlans();
+  }
+
+  document.querySelectorAll('.tab[data-t]').forEach(b => {
+    // Use mousedown so it fires before <details> closes on blur
+    b.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      switchToTab(b.dataset.t);
+    });
+    // Fallback for touch/keyboard
+    b.addEventListener('click', (e) => {
+      if(e.detail === 0) switchToTab(b.dataset.t); // keyboard enter
     });
   });
 
