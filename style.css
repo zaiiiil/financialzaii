@@ -39,7 +39,7 @@ html, body { font-family: var(--font); font-size: 14px; line-height: 1.6; backgr
 .hdate { font-size: 11px; color: var(--t3); }
 
 /* TABS */
-.tabs { background: rgba(255,255,255,.86); backdrop-filter: blur(20px); border-bottom: 1px solid var(--bd); display: flex; padding: 0 1.75rem; position: sticky; top: 58px; z-index: 40; overflow-x: auto; scrollbar-width: none; }
+.tabs { background: rgba(255,255,255,.86); backdrop-filter: blur(20px); border-bottom: 1px solid var(--bd); display: flex; padding: 0 1.75rem; position: sticky; top: 58px; z-index: 40; overflow: visible; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab { padding: 13px 16px; font-family: var(--font); font-size: 12px; font-weight: 500; color: var(--t3); background: none; border: none; border-bottom: 2.5px solid transparent; cursor: pointer; white-space: nowrap; transition: all .18s; flex-shrink: 0; }
 .tab:hover { color: var(--t2); }
