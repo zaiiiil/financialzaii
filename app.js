@@ -990,6 +990,7 @@ function renderBudget() {
   const fEl = el('budget-fixed-section'); if(fEl) fEl.innerHTML = budgetRows(budgetData.fixed,'fixed');
   const eEl = el('budget-ess-section');   if(eEl) eEl.innerHTML = budgetRows(budgetData.essential,'essential');
   const dEl = el('budget-disc-section');  if(dEl) dEl.innerHTML = budgetRows(budgetData.disc,'disc');
+  renderBudgetGuide();
 }
 
 // ── GROUP TAB TOGGLE — wired in DOMContentLoaded below ───────────
@@ -1307,6 +1308,7 @@ function maintMonthly(item) {
 }
 
 function renderMaintenance() {
+  renderMaintenanceGuide();
   const wrap = el('maintenance-list'); if (!wrap) return;
   const sumEl = el('maintenance-summary');
 
@@ -1612,4 +1614,126 @@ function initInstallmentListeners() {
 function toggleInstallFields(type) {
   const wrap = el('install-installment-fields');
   if (wrap) wrap.style.display = type === 'installment' ? '' : 'none';
+}
+
+// ══════════════════════════════════════════════════════
+// BUDGET GUIDE — category table shown in Budget Planner
+// Uses actual monthly spending data to show avg vs target
+// ══════════════════════════════════════════════════════
+function renderBudgetGuide() {
+  const wrap = el('budget-guide'); if (!wrap) return;
+
+  const GUIDE = [
+    { key:'food',         label:'Eating out & cafes',     emoji:'🍽',  budget:6000,  note:'1–2 dinners/wk ~฿400 + 5 cafe drinks/wk ~฿150 each' },
+    { key:'shopping',     label:'Shopping & clothes',     emoji:'🛍',  budget:5500,  note:'Baseline ~฿5,500/mo; one big purchase = next month cut' },
+    { key:'beauty',       label:'Personal care & beauty', emoji:'💅',  budget:4500,  note:'Covers all maintenance items + buffer' },
+    { key:'health',       label:'Health & wellness',      emoji:'💪',  budget:3200,  note:'Gym ฿2,660 fixed + dentist amortised + buffer' },
+    { key:'transport',    label:'Transport',              emoji:'🚌',  budget:2000,  note:'~฿110/day × 22 workdays' },
+    { key:'entertainment',label:'Entertainment',          emoji:'🎮',  budget:2000,  note:'Hard ceiling — over = no cafe treats last week' },
+    { key:'rent',         label:'Rent & bills',           emoji:'📱',  budget:700,   note:'Phone ฿435 + misc — your lowest, keep it that way' },
+  ];
+
+  // Calculate avg per category from months data
+  const sorted = [...months].sort((a,b) => b.month.localeCompare(a.month));
+  const recent = sorted.slice(0, 5); // last 5 months
+
+  wrap.innerHTML = `<div class="glass" style="padding:1.1rem">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:12px">
+      Category spending guide &nbsp;·&nbsp; <span style="font-weight:400;text-transform:none">based on your last ${recent.length} month${recent.length!==1?'s':''} of data</span>
+    </div>
+
+    ${!recent.length ? `<div style="font-size:12px;color:var(--t3);font-style:italic">Log some months in Monthly Spending to see your averages here.</div>` : `
+    <!-- Header row -->
+    <div style="display:grid;grid-template-columns:1fr 90px 90px 90px;gap:8px;padding:0 0 8px;border-bottom:0.5px solid #f0fdf4;margin-bottom:4px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t3)">Category</div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t3);text-align:right">Budget</div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t3);text-align:right">Avg actual</div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t3);text-align:right">Status</div>
+    </div>
+
+    ${GUIDE.map(g => {
+      const avg = recent.length ? Math.round(recent.reduce((s,m) => s + (m[g.key]||0), 0) / recent.length) : 0;
+      const ratio = g.budget > 0 ? avg / g.budget : 0;
+      const over = ratio > 1.1;
+      const warn = ratio > 0.9 && ratio <= 1.1;
+      const statusLabel = over ? 'over' : warn ? 'watch it' : 'on track';
+      const statusBg    = over ? 'rgba(226,75,74,.1)' : warn ? 'rgba(186,117,23,.1)' : 'rgba(16,185,129,.1)';
+      const statusColor = over ? '#a32d2d' : warn ? '#633806' : '#065f46';
+      const barColor    = over ? '#ef4444' : warn ? '#f59e0b' : '#10b981';
+      const barW        = Math.min(Math.round(ratio * 100), 100);
+
+      return `<div style="display:grid;grid-template-columns:1fr 90px 90px 90px;gap:8px;align-items:center;padding:10px 0;border-bottom:0.5px solid #f9fafb">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--t);margin-bottom:2px">${g.emoji} ${g.label}</div>
+          <div style="font-size:10px;color:var(--t3);margin-bottom:5px">${g.note}</div>
+          <div style="height:4px;border-radius:20px;background:#f0fdf4;overflow:hidden;max-width:200px">
+            <div style="height:4px;border-radius:20px;background:${barColor};width:${barW}%;transition:width .4s"></div>
+          </div>
+        </div>
+        <div style="text-align:right;font-family:var(--font-d);font-size:13px;font-weight:600;color:var(--t2)">${fmt(g.budget)}</div>
+        <div style="text-align:right;font-family:var(--font-d);font-size:13px;font-weight:700;color:${over?'var(--red)':warn?'var(--amber)':'var(--t)'}">${recent.length ? fmt(avg) : '—'}</div>
+        <div style="text-align:right"><span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:${statusBg};color:${statusColor}">${recent.length ? statusLabel : '—'}</span></div>
+      </div>`;
+    }).join('')}
+
+    <div style="margin-top:10px;padding:10px 0 2px;border-top:1px solid #f0fdf4;display:flex;flex-wrap:wrap;gap:12px">
+      <div style="font-size:11px;color:var(--t3)">💡 <strong style="color:var(--t2)">Rule:</strong> Shopping over ฿3k single item → subtract from next month's budget &nbsp;·&nbsp; Entertainment over ฿2k → no cafe treats last week</div>
+    </div>`}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// MAINTENANCE GUIDE — hardcoded reference cards
+// Always visible at top of Self-Maintenance tab
+// ══════════════════════════════════════════════════════
+function renderMaintenanceGuide() {
+  const wrap = el('maintenance-guide'); if (!wrap) return;
+
+  const ITEMS = [
+    { name:'Contact lenses', emoji:'👁',  detail:'฿1,700/box × 4 boxes every ~3.5 months', sub:'= ฿6,800 per cycle (~3× a year)', mo:1943, color:'#3b82f6' },
+    { name:'Haircut',         emoji:'✂️', detail:'฿600 every 1.5 months avg',               sub:'= ฿4,800/year',                   mo:400,  color:'#3b82f6' },
+    { name:'Hair colour',     emoji:'🎨', detail:'฿5,000 every 3.5 months avg',              sub:'= ฿17,143/year',                  mo:1429, color:'#ec4899' },
+    { name:'Brow wax',        emoji:'🪮', detail:'฿600 every 2 months',                      sub:'= ฿3,600/year',                   mo:300,  color:'#3b82f6' },
+    { name:'Body wax',        emoji:'🧖', detail:'฿1,000 every 3 months',                    sub:'= ฿4,000/year',                   mo:333,  color:'#3b82f6' },
+    { name:'Nails',           emoji:'💅', detail:'฿800 every 4 months (optional)',            sub:'= ฿2,400/year',                   mo:200,  color:'#9ca3af' },
+    { name:'Dentist',         emoji:'🦷', detail:'฿4,000 avg every 6 months',                sub:'= ฿8,000/year',                   mo:667,  color:'#3b82f6' },
+    { name:'Gym',             emoji:'💪', detail:'฿2,660/month subscription',                sub:'= ฿31,920/year',                  mo:2660, color:'#ec4899' },
+  ];
+
+  const totalMo = ITEMS.reduce((s, x) => s + x.mo, 0);
+  const totalYr = totalMo * 12;
+
+  wrap.innerHTML = `
+    <div class="glass" style="padding:1.1rem;margin-bottom:1rem">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:12px">Your maintenance costs at a glance — reference</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:14px">
+        ${ITEMS.map(item => `
+          <div style="background:var(--bg2,#f9fafb);border-radius:10px;padding:12px 14px;border:0.5px solid #f0f0f0">
+            <div style="font-size:13px;font-weight:700;color:var(--t);margin-bottom:5px">${item.emoji} ${item.name}</div>
+            <div style="font-size:11px;color:var(--t3);margin-bottom:2px">${item.detail}</div>
+            <div style="font-size:11px;color:var(--t3);margin-bottom:6px">${item.sub}</div>
+            <div style="font-family:var(--font-d);font-size:16px;font-weight:800;color:${item.color}">≈ ${fmt(item.mo)}<span style="font-size:10px;font-weight:400;color:var(--t3)">/mo</span></div>
+            ${item.name==='Nails'?`<div style="font-size:10px;color:var(--t3);margin-top:2px">optional</div>`:''}
+          </div>`).join('')}
+      </div>
+      <div style="display:flex;height:8px;border-radius:20px;overflow:hidden;gap:1px;margin-bottom:8px">
+        ${ITEMS.map(item => {
+          const w = Math.round(item.mo / totalMo * 100);
+          const colors = ['#3b82f6','#10b981','#ec4899','#f59e0b','#8b5cf6','#06b6d4','#f97316','#6366f1'];
+          return `<div style="height:8px;background:${colors[ITEMS.indexOf(item)%colors.length]};width:${w}%;min-width:2px" title="${item.name}: ${fmt(item.mo)}/mo"></div>`;
+        }).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+        <div style="background:rgba(236,72,153,.06);border-radius:10px;padding:12px 14px;border:0.5px solid rgba(236,72,153,.15)">
+          <div style="font-size:11px;color:var(--t3);margin-bottom:3px">Monthly amortised cost</div>
+          <div style="font-family:var(--font-d);font-size:22px;font-weight:800;color:#ec4899">${fmt(totalMo)}</div>
+          <div style="font-size:10px;color:var(--t3);margin-top:2px">this is your "cost of existing" lol</div>
+        </div>
+        <div style="background:rgba(59,130,246,.06);border-radius:10px;padding:12px 14px;border:0.5px solid rgba(59,130,246,.15)">
+          <div style="font-size:11px;color:var(--t3);margin-bottom:3px">Total annual maintenance</div>
+          <div style="font-family:var(--font-d);font-size:22px;font-weight:800;color:#3b82f6">${fmt(totalYr)}</div>
+          <div style="font-size:10px;color:var(--t3);margin-top:2px">incl. optional nails</div>
+        </div>
+      </div>
+    </div>`;
 }
