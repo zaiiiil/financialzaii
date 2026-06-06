@@ -21,17 +21,19 @@ async function loadFromFirebase() {
     const snap = await getDoc(doc(db,"portals",DOC_ID));
     if (snap.exists()) {
       const d = snap.data();
-      overview    = d.overview    || {income:0,saveTarget:0};
-      months      = d.months      || [];
-      principles  = d.principles  || [];
-      banks       = d.banks       || [];
-      mmIncome    = d.mmIncome    || {salary:0,autosave:0,autoinvest:0};
-      invMonthly  = d.invMonthly  || 0;
-      allocClasses= d.allocClasses|| JSON.parse(JSON.stringify(DEFAULT_CLASSES));
-      allocTotal  = d.allocTotal  || 1000000;
-      library     = d.library     || migrateOldInvestments(d.investments||[]);
-      plans       = d.plans       || [];
-      transfers   = d.transfers   || [];
+      overview     = d.overview    || {income:0,saveTarget:0};
+      months       = d.months      || [];
+      principles   = d.principles  || [];
+      banks        = d.banks       || [];
+      mmIncome     = d.mmIncome    || {salary:0,autosave:0,autoinvest:0};
+      invMonthly   = d.invMonthly  || 0;
+      allocClasses = d.allocClasses|| JSON.parse(JSON.stringify(DEFAULT_CLASSES));
+      allocTotal   = d.allocTotal  || 1000000;
+      library      = d.library     || migrateOldInvestments(d.investments||[]);
+      plans        = d.plans       || [];
+      transfers    = d.transfers   || [];
+      maintenance  = d.maintenance || [];
+      installments = d.installments|| [];
       if(d.allocCashPct!==undefined){ allocCashPct=d.allocCashPct; allocInvPct=d.allocInvPct; allocLiquidPct=d.allocLiquidPct; allocFixedPct=d.allocFixedPct; }
     } else {
       await migrateFromLS();
@@ -67,7 +69,8 @@ async function saveToFirebase() {
   try {
     await setDoc(doc(db,"portals",DOC_ID),{
       overview,months,principles,banks,mmIncome,
-      invMonthly,allocClasses,allocTotal,library,plans,transfers
+      invMonthly,allocClasses,allocTotal,library,plans,transfers,
+      maintenance,installments
     });
   } catch(e) {
     console.warn("Firebase save failed:",e);
@@ -91,6 +94,8 @@ let invMonthly  = 0;
 let library     = [];
 let allocTotal  = 1000000;
 let allocBuilt  = false;
+let maintenance = [];
+let installments= [];
 
 // Asset classes — 4 classes, no Hedges (merged into Alternatives/Gold)
 const DEFAULT_CLASSES = [
@@ -154,6 +159,7 @@ const totalWealthFromBanks   = ()=>banks.reduce((s,b)=>s+b.amount,0);
 // ── INIT ──────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async ()=>{
   el('hdate').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  injectNewFeatureHTML();
   document.querySelectorAll('.panel').forEach(p=>p.style.opacity='0.4');
   await loadFromFirebase();
   document.querySelectorAll('.panel').forEach(p=>p.style.opacity='1');
@@ -250,6 +256,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   initBudgetListeners();
   initPlanListeners();
   initTransferListeners();
+  initMaintenanceListeners();
+  initInstallmentListeners();
   renderAll();
 });
 
@@ -261,6 +269,7 @@ function renderAll(){
   renderOverview(); renderMoneyMap(); renderSpending();
   renderPlans(); renderTransfers(); renderLibrary();
   renderPrinciples(); renderAllocPlanner(); renderBudget();
+  renderMaintenance(); renderInstallments();
 }
 
 
@@ -1281,4 +1290,549 @@ function initTransferListeners() {
     ].join('');
     wrap.appendChild(row);
   };
+}
+
+// ══════════════════════════════════════════════════════
+// SELF-MAINTENANCE COSTS
+// ══════════════════════════════════════════════════════
+// Each item: { id, name, cost, unit (thb), freqValue (number), freqUnit ('month'|'weeks'|'months'), notes }
+// Monthly amortised = cost / freqInMonths
+
+let editMaintId = null;
+
+function maintMonthly(item) {
+  const v = parseFloat(item.freqValue) || 1;
+  const u = item.freqUnit || 'months';
+  let months;
+  if (u === 'month')  months = 1;
+  else if (u === 'weeks') months = (v * 7) / 30.44;
+  else months = v; // freqUnit === 'months'
+  return (item.cost || 0) / months;
+}
+
+function maintAnnual(item) { return maintMonthly(item) * 12; }
+
+function renderMaintenance() {
+  const wrap = el('maintenance-list'); if (!wrap) return;
+  const summaryEl = el('maintenance-summary');
+
+  if (!maintenance.length) {
+    wrap.innerHTML = `<div class="empty">No maintenance items yet — click "+ Add Item" to start tracking your self-maintenance costs</div>`;
+    if (summaryEl) summaryEl.innerHTML = '';
+    return;
+  }
+
+  const totalMonthly = maintenance.reduce((s, x) => s + maintMonthly(x), 0);
+  const totalAnnual  = totalMonthly * 12;
+
+  if (summaryEl) {
+    summaryEl.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:1.2rem">
+        <div class="kpi"><div class="kpi-lbl">Monthly cost (amortised)</div><div class="kpi-val" style="color:var(--red)">${fmt(totalMonthly)}</div></div>
+        <div class="kpi"><div class="kpi-lbl">Annual cost</div><div class="kpi-val" style="color:var(--amber)">${fmt(totalAnnual)}</div></div>
+        <div class="kpi"><div class="kpi-lbl">Items tracked</div><div class="kpi-val g-text">${maintenance.length}</div></div>
+      </div>
+      <div style="margin-bottom:1.2rem">
+        <div style="display:flex;height:8px;border-radius:20px;overflow:hidden;gap:1px;margin-bottom:6px">
+          ${maintenance.map((x,i) => {
+            const colors = ['#ec4899','#f97316','#8b5cf6','#10b981','#3b82f6','#06b6d4','#f59e0b','#ef4444','#6366f1'];
+            const w = totalMonthly > 0 ? Math.round(maintMonthly(x) / totalMonthly * 100) : 0;
+            return `<div style="height:8px;background:${colors[i % colors.length]};width:${w}%;min-width:2px;transition:width .3s" title="${x.name}: ${fmt(maintMonthly(x))}/mo"></div>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px">
+          ${maintenance.map((x,i) => {
+            const colors = ['#ec4899','#f97316','#8b5cf6','#10b981','#3b82f6','#06b6d4','#f59e0b','#ef4444','#6366f1'];
+            return `<span style="font-size:11px;color:var(--t2);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:${colors[i % colors.length]};display:inline-block"></span>${x.name}</span>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }
+
+  const sorted = [...maintenance].sort((a, b) => maintMonthly(b) - maintMonthly(a));
+  wrap.innerHTML = sorted.map(item => {
+    const mo = maintMonthly(item);
+    const yr = maintAnnual(item);
+    const freqLabel = item.freqValue && item.freqValue > 1
+      ? `every ${item.freqValue} ${item.freqUnit}`
+      : `every ${item.freqUnit === 'month' ? 'month' : item.freqUnit}`;
+    return `<div class="glass" style="padding:1rem 1.1rem;margin-bottom:.6rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+        <div style="flex:1;min-width:0">
+          <div style="font-family:var(--font-d);font-size:14px;font-weight:700;color:var(--t);margin-bottom:3px">${item.name}</div>
+          <div style="font-size:11px;color:var(--t3)">${fmt(item.cost)} &nbsp;·&nbsp; ${freqLabel}</div>
+          ${item.notes ? `<div style="font-size:11px;color:var(--t2);margin-top:4px;font-style:italic">${item.notes}</div>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;flex-shrink:0;flex-wrap:wrap">
+          <div style="text-align:right">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t3)">Per month</div>
+            <div style="font-family:var(--font-d);font-size:16px;font-weight:800;color:#ec4899">${fmt(mo)}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t3)">Per year</div>
+            <div style="font-family:var(--font-d);font-size:13px;font-weight:700;color:var(--t2)">${fmt(yr)}</div>
+          </div>
+          <div style="display:flex;gap:5px">
+            <button class="btn btn-g btn-sm" onclick="editMaint(${item.id})">Edit</button>
+            <button class="btn btn-d btn-sm" onclick="dMaint(${item.id})">x</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function initMaintenanceListeners() {
+  document.querySelectorAll('.tab[data-t="maintenance"]').forEach(b => {
+    b.addEventListener('click', () => setTimeout(renderMaintenance, 50));
+  });
+  document.querySelectorAll('.tab[data-t="installments"]').forEach(b => {
+    b.addEventListener('click', () => setTimeout(renderInstallments, 50));
+  });
+
+  el('btn-add-maint')?.addEventListener('click', () => {
+    editMaintId = null;
+    el('m-maint-title').textContent = 'Add Maintenance Item';
+    ['maint-name','maint-cost','maint-freq-value','maint-notes'].forEach(id => sv(id,''));
+    const sel = el('maint-freq-unit'); if(sel) sel.value = 'months';
+    openM('m-maint');
+  });
+
+  el('sv-maint')?.addEventListener('click', async () => {
+    const name = v('maint-name'); if(!name) return;
+    const entry = {
+      name,
+      cost: +v('maint-cost') || 0,
+      freqValue: +v('maint-freq-value') || 1,
+      freqUnit: el('maint-freq-unit')?.value || 'months',
+      notes: v('maint-notes')
+    };
+    if (editMaintId) {
+      const i = maintenance.findIndex(x => x.id === editMaintId);
+      maintenance[i] = { ...maintenance[i], ...entry };
+      editMaintId = null;
+    } else {
+      maintenance.push({ id: Date.now(), ...entry });
+    }
+    await save(); renderMaintenance(); closeM('m-maint');
+  });
+
+  window.editMaint = id => {
+    editMaintId = id;
+    const item = maintenance.find(x => x.id === id); if(!item) return;
+    el('m-maint-title').textContent = 'Edit Maintenance Item';
+    sv('maint-name', item.name);
+    sv('maint-cost', item.cost);
+    sv('maint-freq-value', item.freqValue || 1);
+    const sel = el('maint-freq-unit'); if(sel) sel.value = item.freqUnit || 'months';
+    sv('maint-notes', item.notes || '');
+    openM('m-maint');
+  };
+
+  window.dMaint = async id => {
+    maintenance = maintenance.filter(x => x.id !== id);
+    await save(); renderMaintenance();
+  };
+}
+
+// ══════════════════════════════════════════════════════
+// INSTALLMENT TRACKER
+// ══════════════════════════════════════════════════════
+// item types:
+//   'installment' — { id, name, total, monthlyAmt, startMonth (YYYY-MM), paidMonths (number), notes }
+//   'recurring'   — { id, name, monthlyAmt, notes }
+
+let editInstallId = null;
+
+function installRemaining(item) {
+  if (item.type === 'recurring') return null;
+  const totalMonths = item.total > 0 && item.monthlyAmt > 0 ? Math.ceil(item.total / item.monthlyAmt) : 0;
+  return Math.max(0, totalMonths - (item.paidMonths || 0));
+}
+
+function installAmtPaid(item) {
+  return (item.paidMonths || 0) * (item.monthlyAmt || 0);
+}
+
+function installProgress(item) {
+  if (!item.total || item.type === 'recurring') return 0;
+  return Math.min(100, Math.round(installAmtPaid(item) / item.total * 100));
+}
+
+function installPayoffDate(item) {
+  if (item.type === 'recurring') return 'Ongoing';
+  const rem = installRemaining(item);
+  if (rem === 0) return 'Paid off ✓';
+  const start = item.startMonth || new Date().toISOString().slice(0,7);
+  const [y, m] = start.split('-').map(Number);
+  const paid = item.paidMonths || 0;
+  const d = new Date(y, m - 1 + paid + rem - 1, 1);
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+function renderInstallments() {
+  const wrap = el('installments-list'); if (!wrap) return;
+  const summaryEl = el('installments-summary');
+
+  const installs   = installments.filter(x => x.type !== 'recurring');
+  const recurrings = installments.filter(x => x.type === 'recurring');
+  const totalMonthly = installments.reduce((s, x) => s + (x.monthlyAmt || 0), 0);
+  const totalDebt    = installs.reduce((s, x) => s + Math.max(0, (x.total || 0) - installAmtPaid(x)), 0);
+
+  if (summaryEl) {
+    summaryEl.innerHTML = installments.length ? `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:1.2rem">
+        <div class="kpi"><div class="kpi-lbl">Total committed/mo</div><div class="kpi-val" style="color:var(--red)">${fmt(totalMonthly)}</div></div>
+        <div class="kpi"><div class="kpi-lbl">Remaining debt</div><div class="kpi-val" style="color:var(--amber)">${fmt(totalDebt)}</div></div>
+        <div class="kpi"><div class="kpi-lbl">Active installments</div><div class="kpi-val g-text">${installs.filter(x=>installRemaining(x)>0).length}</div></div>
+      </div>` : '';
+  }
+
+  if (!installments.length) {
+    wrap.innerHTML = `<div class="empty">No installments or recurring costs yet — click "+ Add Item" to track what you owe each month</div>`;
+    return;
+  }
+
+  let html = '';
+
+  if (installs.length) {
+    html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:8px">Installment payments</div>`;
+    html += installs.map(item => {
+      const prog = installProgress(item);
+      const rem  = installRemaining(item);
+      const paid = installAmtPaid(item);
+      const remaining = Math.max(0, (item.total||0) - paid);
+      const isDone = rem === 0;
+      return `<div class="glass" style="padding:1rem 1.1rem;margin-bottom:.6rem;${isDone?'opacity:.6':''}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+              <div style="font-family:var(--font-d);font-size:14px;font-weight:700;color:var(--t)">${item.name}</div>
+              ${isDone ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(16,185,129,.12);color:#065f46">Paid off ✓</span>` : ''}
+            </div>
+            ${item.notes ? `<div style="font-size:11px;color:var(--t3);font-style:italic">${item.notes}</div>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;flex-shrink:0;flex-wrap:wrap">
+            <div style="text-align:right">
+              <div style="font-size:10px;color:var(--t3)">Monthly</div>
+              <div style="font-family:var(--font-d);font-size:15px;font-weight:700;color:${isDone?'var(--t3)':'var(--red)'}">${fmt(item.monthlyAmt)}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:10px;color:var(--t3)">Remaining</div>
+              <div style="font-family:var(--font-d);font-size:15px;font-weight:700;color:${isDone?'var(--green)':'var(--amber)'}"> ${isDone ? '—' : fmt(remaining)}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:10px;color:var(--t3)">Pays off</div>
+              <div style="font-size:12px;font-weight:600;color:var(--t2)">${installPayoffDate(item)}</div>
+            </div>
+            <div style="display:flex;gap:5px">
+              ${!isDone ? `<button class="btn btn-g btn-sm" onclick="markInstallPaid(${item.id})" title="Mark one month paid" style="font-size:11px">+1 month</button>` : ''}
+              <button class="btn btn-g btn-sm" onclick="editInstall(${item.id})">Edit</button>
+              <button class="btn btn-d btn-sm" onclick="dInstall(${item.id})">x</button>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:4px">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-bottom:4px">
+            <span>Paid: ${fmt(paid)} of ${fmt(item.total||0)}</span>
+            <span>${prog}% · ${rem > 0 ? rem + ' months left' : 'Complete'}</span>
+          </div>
+          <div style="height:6px;border-radius:20px;background:#f0fdf4;overflow:hidden">
+            <div style="height:6px;border-radius:20px;background:${isDone?'#10b981':'#3b82f6'};width:${prog}%;transition:width .4s"></div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  if (recurrings.length) {
+    html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin:1rem 0 8px">Monthly recurring costs</div>`;
+    html += recurrings.map(item => `
+      <div class="glass" style="padding:.85rem 1.1rem;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--t)">${item.name}</div>
+          ${item.notes ? `<div style="font-size:11px;color:var(--t3);font-style:italic">${item.notes}</div>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="font-family:var(--font-d);font-size:15px;font-weight:700;color:var(--t)">${fmt(item.monthlyAmt)}<span style="font-size:10px;font-weight:400;color:var(--t3);margin-left:4px">/mo</span></div>
+          <button class="btn btn-g btn-sm" onclick="editInstall(${item.id})">Edit</button>
+          <button class="btn btn-d btn-sm" onclick="dInstall(${item.id})">x</button>
+        </div>
+      </div>`).join('');
+  }
+
+  wrap.innerHTML = html;
+}
+
+function initInstallmentListeners() {
+  el('btn-add-install')?.addEventListener('click', () => {
+    editInstallId = null;
+    el('m-install-title').textContent = 'Add Item';
+    ['install-name','install-total','install-monthly','install-paid','install-notes'].forEach(id => sv(id,''));
+    el('install-month').value = new Date().toISOString().slice(0,7);
+    const typeEl = el('install-type'); if(typeEl) typeEl.value = 'installment';
+    toggleInstallTypeFields('installment');
+    openM('m-install');
+  });
+
+  el('install-type')?.addEventListener('change', e => toggleInstallTypeFields(e.target.value));
+
+  el('sv-install')?.addEventListener('click', async () => {
+    const name = v('install-name'); if(!name) return;
+    const type = el('install-type')?.value || 'installment';
+    const entry = {
+      name, type,
+      monthlyAmt: +v('install-monthly') || 0,
+      notes: v('install-notes'),
+      ...(type === 'installment' ? {
+        total: +v('install-total') || 0,
+        paidMonths: +v('install-paid') || 0,
+        startMonth: el('install-month')?.value || new Date().toISOString().slice(0,7)
+      } : {})
+    };
+    if (editInstallId) {
+      const i = installments.findIndex(x => x.id === editInstallId);
+      installments[i] = { ...installments[i], ...entry };
+      editInstallId = null;
+    } else {
+      installments.push({ id: Date.now(), ...entry });
+    }
+    await save(); renderInstallments(); closeM('m-install');
+  });
+
+  window.editInstall = id => {
+    editInstallId = id;
+    const item = installments.find(x => x.id === id); if(!item) return;
+    el('m-install-title').textContent = 'Edit Item';
+    sv('install-name', item.name);
+    sv('install-monthly', item.monthlyAmt || '');
+    sv('install-notes', item.notes || '');
+    const typeEl = el('install-type'); if(typeEl) typeEl.value = item.type || 'installment';
+    toggleInstallTypeFields(item.type || 'installment');
+    if(item.type !== 'recurring') {
+      sv('install-total', item.total || '');
+      sv('install-paid', item.paidMonths || 0);
+      if(el('install-month')) el('install-month').value = item.startMonth || '';
+    }
+    openM('m-install');
+  };
+
+  window.dInstall = async id => {
+    installments = installments.filter(x => x.id !== id);
+    await save(); renderInstallments();
+  };
+
+  window.markInstallPaid = async id => {
+    const item = installments.find(x => x.id === id); if(!item) return;
+    const totalMonths = item.total > 0 && item.monthlyAmt > 0 ? Math.ceil(item.total / item.monthlyAmt) : 0;
+    if((item.paidMonths||0) < totalMonths) {
+      item.paidMonths = (item.paidMonths||0) + 1;
+      await save(); renderInstallments();
+    }
+  };
+}
+
+function toggleInstallTypeFields(type) {
+  const wrap = el('install-installment-fields');
+  if(wrap) wrap.style.display = type === 'installment' ? '' : 'none';
+}
+
+// ══════════════════════════════════════════════════════
+// INJECT HTML — modals + tab panels for new features
+// Called once on DOMContentLoaded (before renderAll)
+// ══════════════════════════════════════════════════════
+function injectNewFeatureHTML() {
+
+  // ── 1. Tab buttons ──────────────────────────────────
+  // Find the sidebar nav and append two new tab entries.
+  // The app uses <details class="grp"> groups with .tab[data-t] buttons inside.
+  // We look for the last <details class="grp"> and append a new group after it.
+  const sidebar = document.querySelector('.sidebar, nav, #sidebar, [class*="sidebar"], [class*="nav"]');
+
+  // Inject a new <details class="grp"> group for "Lifestyle" after existing nav groups.
+  // We detect the nav container by finding where existing .grp elements live.
+  const existingGrp = document.querySelector('.grp');
+  if (existingGrp) {
+    const navParent = existingGrp.parentElement;
+    // Only inject once
+    if (!document.querySelector('[data-t="maintenance"]')) {
+      const grpEl = document.createElement('details');
+      grpEl.className = 'grp';
+      grpEl.open = false;
+      grpEl.innerHTML = `
+        <summary class="grp-label">Lifestyle</summary>
+        <button class="tab" data-t="maintenance">Self-Maintenance</button>
+        <button class="tab" data-t="installments">Installments & Fixed</button>
+      `;
+      navParent.appendChild(grpEl);
+    }
+  }
+
+  // ── 2. Panel containers ─────────────────────────────
+  const panelParent = document.querySelector('.panels, .main, main, #main, [class*="panels"], [class*="content"]') || document.body;
+
+  if (!el('p-maintenance')) {
+    const maintPanel = document.createElement('div');
+    maintPanel.id = 'p-maintenance';
+    maintPanel.className = 'panel';
+    maintPanel.innerHTML = `
+      <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-family:var(--font-d);font-size:18px;font-weight:800" class="g-text">Self-Maintenance Costs</div>
+          <div style="font-size:12px;color:var(--t3);margin-top:2px">How much does it cost to be you — amortised monthly</div>
+        </div>
+        <button id="btn-add-maint" class="btn btn-g">+ Add Item</button>
+      </div>
+      <div id="maintenance-summary"></div>
+      <div id="maintenance-list"></div>`;
+    panelParent.appendChild(maintPanel);
+  }
+
+  if (!el('p-installments')) {
+    const installPanel = document.createElement('div');
+    installPanel.id = 'p-installments';
+    installPanel.className = 'panel';
+    installPanel.innerHTML = `
+      <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-family:var(--font-d);font-size:18px;font-weight:800" class="g-text">Installments & Fixed Costs</div>
+          <div style="font-size:12px;color:var(--t3);margin-top:2px">Track what you owe each month and when debts clear</div>
+        </div>
+        <button id="btn-add-install" class="btn btn-g">+ Add Item</button>
+      </div>
+      <div id="installments-summary"></div>
+      <div id="installments-list"></div>`;
+    panelParent.appendChild(installPanel);
+  }
+
+  // ── 3. Maintenance modal ────────────────────────────
+  if (!el('m-maint')) {
+    const mModal = document.createElement('div');
+    mModal.id = 'm-maint';
+    mModal.className = 'modal';
+    mModal.innerHTML = `
+      <div class="modal-header">
+        <div id="m-maint-title" class="modal-title">Add Maintenance Item</div>
+        <button class="btn btn-d btn-sm" data-close="m-maint">×</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;padding:1rem 0">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">Item name</label>
+          <input id="maint-name" placeholder="e.g. Hair colour, Contact lenses…"
+            style="width:100%;padding:8px 12px;border:1px solid #d1fae5;border-radius:10px;font-size:13px;color:var(--t);background:transparent;box-sizing:border-box">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label style="font-size:12px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">Cost (฿)</label>
+            <input id="maint-cost" type="number" placeholder="e.g. 5000"
+              style="width:100%;padding:8px 12px;border:1px solid #d1fae5;border-radius:10px;font-size:13px;color:var(--t);background:transparent;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">Frequency — every…</label>
+            <div style="display:flex;gap:6px">
+              <input id="maint-freq-value" type="number" min="1" placeholder="3"
+                style="width:60px;padding:8px 10px;border:1px solid #d1fae5;border-radius:10px;font-size:13px;color:var(--t);background:transparent">
+              <select id="maint-freq-unit" style="flex:1;padding:8px 10px;border:1px solid #d1fae5;border-radius:10px;font-size:13px;color:var(--t);background:var(--bg,#fff)">
+                <option value="month">month</option>
+                <option value="months" selected>months</option>
+                <option value="weeks">weeks</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">Notes (optional)</label>
+          <input id="maint-notes" placeholder="e.g. Sometimes skip if wearing glasses…"
+            style="width:100%;padding:8px 12px;border:1px solid #d1fae5;border-radius:10px;font-size:13px;color:var(--t);background:transparent;box-sizing:border-box">
+        </div>
+        <button id="sv-maint" class="btn btn-g" style="width:100%;padding:10px;font-size:14px;font-weight:700;margin-top:4px">Save Item</button>
+      </div>`;
+    document.body.appendChild(mModal);
+  }
+
+  // ── 4. Installment modal ────────────────────────────
+  if (!el('m-install')) {
+    const iModal = document.createElement('div');
+    iModal.id = 'm-install';
+    iModal.className = 'modal';
+    iModal.innerHTML = `
+      <div class="modal-header">
+        <div id="m-install-title" class="modal-title">Add Item</div>
+        <button class="btn btn-d btn-sm" data-close="m-install">×</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;padding:1rem 0">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">Type</label>
+          <select id="install-type" style="width:100%;padding:8px 12px;border:1px solid #d1fae5;border-radius:10px;font-size:13px;color:var(--t);background:var(--bg,#fff);box-sizing:border-box">
+            <option value="installment">Installment (has a total & end date)</option>
+            <option value="recurring">Recurring monthly cost (no end date)</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">Name</label>
+          <input id="install-name" placeholder="e.g. MacBook Air, Gym membership…"
+            style="width:100%;padding:8px 12px;border:1px solid #d1fae5;border-radius:10px;font-size:13px;color:var(--t);background:transparent;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">Monthly payment (฿)</label>
+          <input id="install-monthly" type="number" placeholder="e.g. 3075"
+            style="width:100%;padding:8px 12px;border:1px solid #d1fae5;border-radius:10px;font-size:13px;color:var(--t);background:transparent;box-sizing:border-box">
+        </div>
+        <div id="install-installment-fields">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div>
+              <label style="font-size:12px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">Total amount (฿)</label>
+              <input id="install-total" type="number" placeholder="e.g. 36900"
+                style="width:100%;padding:8px 12px;border:1px solid #d1fae5;border-radius:10px;font-size:13px;color:var(--t);background:transparent;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">Months already paid</label>
+              <input id="install-paid" type="number" min="0" placeholder="0"
+                style="width:100%;padding:8px 12px;border:1px solid #d1fae5;border-radius:10px;font-size:13px;color:var(--t);background:transparent;box-sizing:border-box">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">Start month</label>
+            <input id="install-month" type="month"
+              style="width:100%;padding:8px 12px;border:1px solid #d1fae5;border-radius:10px;font-size:13px;color:var(--t);background:transparent;box-sizing:border-box">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">Notes (optional)</label>
+          <input id="install-notes" placeholder="e.g. Paying back to parents…"
+            style="width:100%;padding:8px 12px;border:1px solid #d1fae5;border-radius:10px;font-size:13px;color:var(--t);background:transparent;box-sizing:border-box">
+        </div>
+        <button id="sv-install" class="btn btn-g" style="width:100%;padding:10px;font-size:14px;font-weight:700;margin-top:4px">Save Item</button>
+      </div>`;
+    document.body.appendChild(iModal);
+  }
+
+  // ── 5. Wire new [data-close] buttons ───────────────
+  document.querySelectorAll('[data-close]').forEach(b => {
+    b.addEventListener('click', () => closeM(b.dataset.close));
+  });
+
+  // ── 6. Wire new tabs into the tab switcher ──────────
+  document.querySelectorAll('.tab[data-t="maintenance"], .tab[data-t="installments"]').forEach(b => {
+    b.addEventListener('mousedown', e => { e.preventDefault(); switchToTabGlobal(b.dataset.t); });
+    b.addEventListener('click', e => { if(e.detail===0) switchToTabGlobal(b.dataset.t); });
+  });
+}
+
+// Expose global tab switcher (mirrors the one inside DOMContentLoaded)
+function switchToTabGlobal(t) {
+  if(!t) return;
+  document.querySelectorAll('.tab[data-t]').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+  const btn = document.querySelector('.tab[data-t="'+t+'"]');
+  if(btn) btn.classList.add('active');
+  el('p-'+t)?.classList.add('active');
+  document.querySelectorAll('.grp-label').forEach(l => l.classList.remove('active'));
+  if(btn) {
+    const parentGrp = btn.closest('.grp');
+    if(parentGrp) {
+      parentGrp.removeAttribute('open');
+      parentGrp.querySelector('.grp-label')?.classList.add('active');
+    }
+  }
 }
