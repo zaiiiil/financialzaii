@@ -44,6 +44,13 @@
       <button class="tab grp-item" data-t="principles">Principles</button>
     </div>
   </details>
+  <details class="grp">
+    <summary class="tab grp-label">Lifestyle ▾</summary>
+    <div class="grp-menu">
+      <button class="tab grp-item" data-t="maintenance">Self-Maintenance</button>
+      <button class="tab grp-item" data-t="installments">Installments & Fixed</button>
+    </div>
+  </details>
 </nav>
 
 <div class="main-wrap">
@@ -191,9 +198,27 @@
     <div id="principles-list"></div>
   </div>
 
-</div>
+  <!-- SELF-MAINTENANCE COSTS -->
+  <div class="panel" id="p-maintenance">
+    <div class="ph">
+      <div><div class="ptitle">Self-Maintenance Costs</div><div class="psub">How much does it cost to be you — amortised monthly</div></div>
+      <button class="btn btn-p" id="btn-add-maint">+ Add Item</button>
+    </div>
+    <div id="maintenance-summary"></div>
+    <div id="maintenance-list"></div>
+  </div>
 
-<!-- ══ MODALS ══ -->
+  <!-- INSTALLMENTS & FIXED COSTS -->
+  <div class="panel" id="p-installments">
+    <div class="ph">
+      <div><div class="ptitle">Installments & Fixed Costs</div><div class="psub">Track what you owe each month and when debts clear</div></div>
+      <button class="btn btn-p" id="btn-add-install">+ Add Item</button>
+    </div>
+    <div id="installments-summary"></div>
+    <div id="installments-list"></div>
+  </div>
+
+</div>
 
 <!-- Overview -->
 <div class="modal" id="m-overview">
@@ -412,6 +437,53 @@
     <button onclick="addTransferRow()" style="width:100%;padding:8px;border:1.5px dashed #d1fae5;border-radius:8px;background:transparent;font-size:12px;font-weight:600;color:#10b981;cursor:pointer;margin-top:6px">+ Add Item</button>
   </div>
   <div class="mfoot"><button class="btn btn-g" data-close="m-transfer">Cancel</button><button class="btn btn-p" id="sv-transfer">Save</button></div>
+</div>
+
+<!-- Self-Maintenance Item -->
+<div class="modal" id="m-maint">
+  <div class="mhdr"><h3 id="m-maint-title">Add Maintenance Item</h3><button class="mx" data-close="m-maint">×</button></div>
+  <div class="mbody">
+    <div class="fld"><label>Item name</label><input id="maint-name" placeholder="e.g. Hair colour, Contact lenses, Gym…"></div>
+    <div class="r2">
+      <div class="fld"><label>Cost (฿)</label><input id="maint-cost" type="number" placeholder="e.g. 5000"></div>
+      <div class="fld"><label>Frequency — every…</label>
+        <div style="display:flex;gap:6px">
+          <input id="maint-freq-value" type="number" min="1" placeholder="3" style="width:70px">
+          <select id="maint-freq-unit" style="flex:1">
+            <option value="months" selected>months</option>
+            <option value="month">month (fixed monthly)</option>
+            <option value="weeks">weeks</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="fld"><label>Notes (optional)</label><input id="maint-notes" placeholder="e.g. Sometimes skip if wearing glasses…"></div>
+  </div>
+  <div class="mfoot"><button class="btn btn-g" data-close="m-maint">Cancel</button><button class="btn btn-p" id="sv-maint">Save Item</button></div>
+</div>
+
+<!-- Installment / Recurring Cost -->
+<div class="modal" id="m-install">
+  <div class="mhdr"><h3 id="m-install-title">Add Item</h3><button class="mx" data-close="m-install">×</button></div>
+  <div class="mbody">
+    <div class="fld"><label>Type</label>
+      <select id="install-type">
+        <option value="installment">Installment — has a total amount &amp; end date</option>
+        <option value="recurring">Recurring — ongoing monthly cost, no end date</option>
+      </select>
+    </div>
+    <div class="fld"><label>Name</label><input id="install-name" placeholder="e.g. MacBook Air, Gym membership…"></div>
+    <div class="fld"><label>Monthly payment (฿)</label><input id="install-monthly" type="number" placeholder="e.g. 3075"></div>
+    <div id="install-installment-fields">
+      <div class="r2">
+        <div class="fld"><label>Total amount (฿)</label><input id="install-total" type="number" placeholder="e.g. 36900"></div>
+        <div class="fld"><label>Months already paid</label><input id="install-paid" type="number" min="0" placeholder="0"></div>
+      </div>
+      <div class="fld"><label>Start month</label><input id="install-month" type="month"></div>
+    </div>
+    <div class="fld"><label>Notes (optional)</label><input id="install-notes" placeholder="e.g. Paying back to parents in instalments…"></div>
+  </div>
+  <div class="mfoot"><button class="btn btn-g" data-close="m-install">Cancel</button><button class="btn btn-p" id="sv-install">Save Item</button></div>
 </div>
 
 <script type="module" src="app.js"></script>
